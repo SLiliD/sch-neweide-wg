@@ -96,10 +96,15 @@
   <!-- BANK -->
   <section id="s-bank">
     <h2>Apartment bank</h2>
+    <div class="row">
+      <div><label>Count provider debt from month</label><input type="text" id="bankFromMonth" placeholder="2026-06" style="width:100px"></div>
+      <div><label>&nbsp;</label><button id="bankFromApply">Apply</button></div>
+    </div>
     <div>
       <div class="stat"><div class="k">Missing (unpaid charges)</div><div class="v" id="bMissing"></div></div>
       <div class="stat"><div class="k">Bank balance (should be ~0)</div><div class="v" id="bBal"></div></div>
       <div class="stat"><div class="k">Bank owes people</div><div class="v" id="bOwes"></div></div>
+      <div class="stat"><div class="k">Bank owes providers</div><div class="v" id="bOwesProv"></div></div>
       <div class="stat"><div class="k">Buffer</div><div class="v" id="bBuf"></div></div>
     </div>
     <div class="muted" id="bankNote" style="font-size:13px;margin-top:4px"></div>
@@ -463,16 +468,39 @@ function renderBank(){
   $('bMissing').innerHTML=`<span class="${missing>0.005?'red':''}">${eur(missing)}</span>`;
   $('bBal').innerHTML=`<span class="${Math.abs(balance)>0.005?'red':''}">${eur(balance)}</span>`;
   $('bOwes').innerHTML=`<span class="${owes>0.005?'red':''}">${eur(owes)}</span>`;
+  // bank owes providers = uncovered provider charges (charge - paid) from the chosen month onward
+  if(!$('bankFromMonth').value){
+    const firstLabel=S.months.length?[...S.months].map(m=>m.label).sort()[0]:curMonthLabel();
+    $('bankFromMonth').value=firstLabel;
+  }
+  const fromM=$('bankFromMonth').value.trim();
+  let owesProv=0;
+  const nowM=curMonthLabel();
+  for(const mo of S.months){
+    if(mo.label<fromM)continue;
+    if(mo.label>nowM)continue;
+    for(const a of providerAccounts()){
+      const pc=S.provCharges.find(x=>x.account_id===a.id&&x.month_id===mo.id);
+      const charge=pc?Number(pc.amount):0;
+      if(charge<=0.005)continue;
+      const paid=S.movements.filter(m=>m.to_account===a.id&&movementMonth(m)===mo.label).reduce((s,m)=>s+Number(m.amount),0);
+      const gap=charge-paid;
+      if(gap>0.005)owesProv+=gap;
+    }
+  }
+  $('bOwesProv').innerHTML=`<span class="${owesProv>0.005?'red':''}">${eur(owesProv)}</span>`;
   $('bBuf').textContent=eur(bufBal);
   const notes=[];
   if(missing>0.005)notes.push(`${eur(missing)} still owed to the bank in unpaid charges.`);
   if(Math.abs(balance)>0.005)notes.push(`Balance isn't zero — ${eur(balance)} unaccounted for; find it and move it to buffer or fix a movement.`);
   if(owes>0.005)notes.push(`Bank owes ${eur(owes)} to people who paid providers without taking out.`);
+  if(owesProv>0.005)notes.push(`Bank owes ${eur(owesProv)} to providers (uncovered charges from ${fromM}).`);
   if(!notes.length)notes.push('Everything balances. ✓');
   $('bankNote').innerHTML=notes.join(' ');
   const rows=byDateDesc(S.movements).slice(0,15);
   $('recentTable').querySelector('tbody').innerHTML=rows.length?rows.map(m=>`<tr><td>${m.ts||''}</td><td>${accName(m.from_account)}</td><td>${accName(m.to_account)}</td><td class="n">${eur(m.amount)}</td><td>${m.note||''}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">No movements yet. Use the buttons above.</td></tr>';
 }
+document.addEventListener('click',e=>{ if(e.target&&e.target.id==='bankFromApply')renderBank(); });
 
 // ---- PEOPLE ----
 function renderPeople(){
