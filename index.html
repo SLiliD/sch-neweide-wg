@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schöneweide 5 — Bank</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#fff;color:#000;font-family:"Times New Roman",Times,serif;font-size:16px;line-height:1.4}
+  a{color:#b00000;cursor:pointer}
+  .red{color:#b00000} .bold{font-weight:bold}
+  h1{font-size:22px;margin:0} h2{font-size:18px;margin:0 0 8px;border-bottom:2px solid #000;padding-bottom:3px}
+  h3{font-size:15px;margin:14px 0 6px}
+  #gate{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:50}
+  .gatebox{border:2px solid #000;padding:24px;width:320px;max-width:90%}
+  .gatebox label{display:block;font-size:13px;margin:10px 0 3px}
+  .gatebox select,.gatebox input{width:100%;padding:7px;border:1px solid #000;font-family:inherit;font-size:15px}
+  .gatebox button{width:100%;margin-top:14px;padding:9px;background:#000;color:#fff;border:none;font-family:inherit;font-size:15px;cursor:pointer}
+  .gmsg{font-size:13px;margin-top:8px;min-height:16px} .gmsg.err{color:#b00000}
+  #app{display:none;max-width:920px;margin:0 auto;padding:14px}
+  header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px double #000;padding-bottom:6px}
+  .who{font-size:13px}
+  nav{margin:8px 0;border-bottom:1px solid #000}
+  nav a{display:inline-block;padding:5px 12px;color:#000;text-decoration:none;border:1px solid #000;border-bottom:none;margin-right:2px;font-size:14px}
+  nav a.on{background:#000;color:#fff}
+  section{padding:10px 0}
+  table{width:100%;border-collapse:collapse;font-size:15px;margin:6px 0}
+  th,td{border:1px solid #000;padding:5px 7px;text-align:left}
+  th{background:#000;color:#fff;font-weight:normal;font-size:13px}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  input,select,button{font-family:inherit;font-size:14px}
+  input[type=text],input[type=number],input[type=date],select{padding:4px;border:1px solid #000;background:#fff}
+  button{padding:6px 12px;background:#fff;border:1px solid #000;cursor:pointer}
+  button.dark{background:#000;color:#fff}
+  button.tiny{font-size:12px;padding:2px 6px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px}
+  .row>div{display:flex;flex-direction:column}
+  .row label{font-size:12px}
+  .msg{font-size:13px;min-height:16px;margin:6px 0} .msg.err{color:#b00000}
+  .big{font-size:26px;font-weight:bold}
+  .stat{border:1px solid #000;padding:8px 12px;display:inline-block;margin:4px 8px 4px 0;min-width:150px}
+  .stat .k{font-size:12px} .stat .v{font-size:22px;font-weight:bold}
+  .muted{color:#666} hr{border:none;border-top:1px solid #000;margin:12px 0}
+  #calcWrap{max-width:300px;border:2px solid #000;padding:10px}
+  #calcDisp{width:100%;text-align:right;font-size:28px;font-family:"Times New Roman",serif;border:1px solid #000;padding:8px;margin-bottom:8px;background:#fff}
+  .calcgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .ck{font-size:18px;padding:14px 0;border:1px solid #000;background:#fff;cursor:pointer;font-family:"Times New Roman",serif}
+  .ck:hover{background:#eee}
+  .ck.op{background:#000;color:#fff} .ck.op:hover{background:#333}
+  .ck.eq{background:#b00000;color:#fff;border-color:#b00000} .ck.eq:hover{background:#900}
+  .ck.fn{color:#b00000}
+  .actbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .actbar button{font-size:15px;padding:8px 16px}
+  dialog{border:2px solid #000;padding:0;max-width:380px;width:92%}
+  dialog .in{padding:18px} dialog h3{margin-top:0}
+  dialog label{display:block;font-size:12px;margin:8px 0 2px}
+  dialog input,dialog select{width:100%;padding:6px;border:1px solid #000}
+  dialog .x{position:absolute;top:6px;right:10px;border:none;background:none;font-size:20px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gatebox">
+    <h1>Schöneweide 5</h1>
+    <label>Name</label><select id="gPerson"></select>
+    <label id="gPinL">PIN</label><input type="password" id="gPin" inputmode="numeric">
+    <div class="muted" id="gHint" style="font-size:12px"></div>
+    <button id="gGo">Enter</button>
+    <div class="gmsg" id="gMsg"></div>
+  </div>
+</div>
+
+<div id="app">
+  <header><h1>Schöneweide 5 — Bank</h1><div class="who" id="who"></div></header>
+  <nav id="nav">
+    <a data-t="bank" class="on">Bank</a>
+    <a data-t="people">People</a>
+    <a data-t="ledgers">Ledgers</a>
+    <a data-t="providers">Providers</a>
+    <a data-t="buffer">Buffer</a>
+    <a data-t="charges">Charges</a>
+    <a data-t="kaution">Kaution</a>
+    <a data-t="statement">Statement</a>
+    <a data-t="calc">Calc</a>
+  </nav>
+  <div class="msg" id="msg"></div>
+
+  <div class="actbar">
+    <button class="dark" id="btnIn">Pay in</button>
+    <button id="btnOut">Take out</button>
+    <button id="btnPay">Pay provider</button>
+    <button id="btnBuffer">Move to/from buffer</button>
+  </div>
+
+  <!-- BANK -->
+  <section id="s-bank">
+    <h2>Apartment bank</h2>
+    <div>
+      <div class="stat"><div class="k">Missing (unpaid charges)</div><div class="v" id="bMissing"></div></div>
+      <div class="stat"><div class="k">Bank balance (should be ~0)</div><div class="v" id="bBal"></div></div>
+      <div class="stat"><div class="k">Bank owes people</div><div class="v" id="bOwes"></div></div>
+      <div class="stat"><div class="k">Buffer</div><div class="v" id="bBuf"></div></div>
+    </div>
+    <div class="muted" id="bankNote" style="font-size:13px;margin-top:4px"></div>
+    <h3>Recent movements</h3>
+    <table id="recentTable"><thead><tr><th>Date</th><th>From</th><th>To</th><th class="n">Amount</th><th>Note</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <!-- PEOPLE -->
+  <section id="s-people" style="display:none">
+    <h2>People</h2>
+    <table id="peopleTable"><thead><tr><th>Person</th><th class="n">Owed dues</th><th class="n">Held / bank owes</th><th>State</th></tr></thead><tbody></tbody></table>
+    <div class="muted" style="font-size:13px">Owed dues = charged − paid in (what they owe the bank). Held / bank owes = money taken out − paid to providers. Positive (red) = they're holding bank cash to spend; green "+ owed" = they paid providers beyond what they took out, so the bank owes them.</div>
+    <hr>
+    <h3>Add a person</h3>
+    <div class="row">
+      <div><label>Name</label><input type="text" id="pName"></div>
+      <div><label>&nbsp;</label><button id="pAdd">Add</button></div>
+    </div>
+    <div class="muted" id="pAdminNote" style="font-size:12px"></div>
+  </section>
+
+  <!-- LEDGERS -->
+  <section id="s-ledgers" style="display:none">
+    <h2>Ledgers</h2>
+    <div class="row">
+      <div><label>Show</label>
+        <select id="ledgerWho"><option value="">— everyone —</option></select></div>
+    </div>
+    <div class="muted" id="ledgerReviewNote" style="font-size:13px;margin-top:4px"></div>
+    <table id="ledgerTable"><thead><tr><th>Date</th><th>Person</th><th>From</th><th>To</th><th class="n">Amount</th><th>Note</th><th></th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <!-- PROVIDERS -->
+  <section id="s-providers" style="display:none">
+    <h2>Providers — charges, coverage &amp; contract holder</h2>
+    <div class="row">
+      <div><label>Month</label><input type="text" id="provMonth" placeholder="2026-06" style="width:100px"></div>
+      <div><label>&nbsp;</label><button id="provLoad">Show month</button></div>
+    </div>
+    <table id="provTable"><thead><tr><th>Provider</th><th class="n">Charge (€)</th><th>Covered?</th><th class="n">Gap</th><th>Contract held by</th></tr></thead><tbody></tbody></table>
+    <div class="muted" id="provCoverNote" style="font-size:12px"></div>
+    <div class="muted" style="font-size:12px">Coverage comes from actual payments logged into the provider this month. Set who holds each contract in the last column.</div>
+    <hr>
+    <h3>History — who held each contract, by month</h3>
+    <table id="ctHistTable"><thead><tr><th>Month</th><th>Provider</th><th>Holder</th></tr></thead><tbody></tbody></table>
+    <hr>
+    <h3>Add a provider / place</h3>
+    <div class="row">
+      <div><label>Name</label><input type="text" id="provName"></div>
+      <div><label>&nbsp;</label><button id="provAdd">Add</button></div>
+    </div>
+  </section>
+
+  <!-- BUFFER -->
+  <section id="s-buffer" style="display:none">
+    <h2>Buffer</h2>
+    <div class="stat"><div class="k">Buffer balance</div><div class="v" id="bufBal"></div></div>
+    <div class="muted" style="font-size:13px">Add: move money into Buffer. Spend: move money out (admin).</div>
+    <h3>Buffer movements</h3>
+    <table id="bufTable"><thead><tr><th>Date</th><th>From</th><th>To</th><th class="n">Amount</th><th>Note</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <!-- CHARGES -->
+  <section id="s-charges" style="display:none">
+    <h2>Charges — monthly bill per person</h2>
+    <div class="row">
+      <div><label>Month</label><input type="text" id="chMonth" placeholder="2026-06" style="width:100px"></div>
+    </div>
+    <div id="chPickList" style="margin:8px 0"></div>
+    <div class="row">
+      <div><label>&nbsp;</label><button id="chGen">Charge ticked people</button></div>
+      <div class="muted" style="font-size:12px;align-self:center" id="chGenNote"></div>
+    </div>
+    <div class="muted" style="font-size:12px">After charging, edit any amount in the table below — e.g. set two people to half a share each to split one share.</div>
+    <table id="chargeTable"><thead><tr><th>Month</th><th>Person</th><th class="n">Amount</th><th class="n">Paid in</th><th>State</th><th></th></tr></thead><tbody></tbody></table>
+    <hr>
+    <div class="row">
+      <div><label>Monthly total (€)</label><input type="number" id="setTotal" step="0.01" style="width:110px"></div>
+      <div><label>&nbsp;</label><button id="setSave">Save total</button></div>
+      <div class="muted" style="font-size:12px;align-self:center" id="shareNote"></div>
+    </div>
+  </section>
+
+  <!-- KAUTION -->
+  <section id="s-kaution" style="display:none">
+    <h2>Kaution — deposit with the Hausverwaltung</h2>
+    <div class="row">
+      <div><label>Total deposit held by Hausverwaltung (€)</label><input type="number" id="kdTotal" step="0.01" style="width:130px"></div>
+      <div><label>&nbsp;</label><button id="kdSave">Save</button></div>
+      <div><label>&nbsp;</label><button id="kSyncDates">Re-sync dates to ledger</button></div>
+    </div>
+    <div class="muted" id="kSyncMsg" style="font-size:12px"></div>
+
+    <h3>Whose money is in right now</h3>
+    <table id="kHoldersTable"><thead><tr><th>Tenant</th><th class="n">Holds (€)</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="muted" id="kSumNote" style="font-size:12px"></div>
+    <div class="muted" style="font-size:12px">This list is calculated from the history below — record what happened there and this updates itself.</div>
+
+    <hr>
+    <h3>History — handovers &amp; deductions</h3>
+    <div class="muted" style="font-size:12px">Record what happened. The person who paid becomes the new holder. Holders above update automatically.</div>
+    <table id="kHistTable"><thead><tr><th>Date</th><th>Type</th><th>From</th><th>To</th><th class="n">Deposit</th><th class="n">Deduction</th><th>Reason</th><th></th></tr></thead><tbody></tbody></table>
+    <div id="khkHandover" style="margin-top:8px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:15px">
+        <select id="khkPayer" style="min-width:120px"></select>
+        <span>paid</span>
+        <select id="khkPayee" style="min-width:120px"></select>
+        <span>€</span>
+        <input type="number" id="khkAmt" step="0.01" style="width:90px" placeholder="deposit">
+        <span>and takes over the spot.</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:15px;margin-top:6px">
+        <span>Deduction kept from the leaver (goes to buffer): €</span>
+        <input type="number" id="khkDedAmt" step="0.01" style="width:90px" placeholder="0">
+        <span>reason</span>
+        <input type="text" id="khkDedReason" style="width:150px">
+        <button id="khkAddHand">Record</button>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:4px">The new holder holds the full deposit. The deduction is added to the buffer automatically. For the very first deposit, set the paid-to person to "Hausverwaltung".</div>
+    </div>
+  </section>
+
+  <!-- STATEMENT -->
+  <section id="s-statement" style="display:none">
+    <h2>Bank statement</h2>
+    <div class="row">
+      <div><label>Month</label><input type="text" id="stMonth" placeholder="2026-06" style="width:100px"></div>
+      <div><label>&nbsp;</label><button id="stShow">Show</button></div>
+    </div>
+    <div id="stSummary" style="margin:10px 0"></div>
+    <h3>Movements this month</h3>
+    <table id="stTable"><thead><tr><th>Date</th><th>Tagged month</th><th>Person</th><th>From</th><th>To</th><th class="n">Amount</th><th>Note</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <!-- CALC -->
+  <section id="s-calc" style="display:none">
+    <h2>Calculator</h2>
+    <div id="calcWrap">
+      <input type="text" id="calcDisp" readonly value="0">
+      <div class="calcgrid">
+        <button class="ck fn" data-k="C">C</button>
+        <button class="ck fn" data-k="back">←</button>
+        <button class="ck fn" data-k="%">%</button>
+        <button class="ck op" data-k="/">÷</button>
+        <button class="ck" data-k="7">7</button>
+        <button class="ck" data-k="8">8</button>
+        <button class="ck" data-k="9">9</button>
+        <button class="ck op" data-k="*">×</button>
+        <button class="ck" data-k="4">4</button>
+        <button class="ck" data-k="5">5</button>
+        <button class="ck" data-k="6">6</button>
+        <button class="ck op" data-k="-">−</button>
+        <button class="ck" data-k="1">1</button>
+        <button class="ck" data-k="2">2</button>
+        <button class="ck" data-k="3">3</button>
+        <button class="ck op" data-k="+">+</button>
+        <button class="ck" data-k="0" style="grid-column:span 2">0</button>
+        <button class="ck" data-k=".">.</button>
+        <button class="ck eq" data-k="=">=</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- MOVEMENT DIALOG -->
+<dialog id="mvDlg"><div class="in">
+  <button class="x" id="mvX">×</button>
+  <h3 id="mvTitle">Movement</h3>
+  <div id="mvPersonWrap"><label>Person</label><select id="mvPerson"></select></div>
+  <div id="mvOtherWrap"><label id="mvOtherL">Provider</label><select id="mvOther"></select></div>
+  <label>Amount (€)</label><input type="number" id="mvAmt" step="0.01">
+  <label>Date</label><input type="date" id="mvDate">
+  <label>Month</label><input type="text" id="mvMonth" placeholder="2026-06">
+  <label>Note</label><input type="text" id="mvNote">
+  <button class="dark" id="mvGo" style="width:100%;margin-top:12px">Record</button>
+  <div class="gmsg" id="mvMsg"></div>
+</div></dialog>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const sb=createClient('https://zaczerqwmnvojvojskds.supabase.co','sb_publishable_yMcT1JFFsi4Ut0xOHAxQKA_HOMYoTPR');
+const $=id=>document.getElementById(id);
+const eur=n=>(Number(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+
+let S={me:null,settings:null,people:[],accounts:[],movements:[],charges:[],months:[],provCharges:[],kd:{total:0},kHolders:[],kHist:[],contractHolders:[]};
+const isAdmin=()=>S.me&&S.me.is_admin;
+const acc=id=>S.accounts.find(a=>a.id===id);
+const accName=id=>id==null?'BANK':(acc(id)?acc(id).name:'—');
+const personAccount=pid=>S.accounts.find(a=>a.kind==='person'&&a.person_id===pid);
+const providerAccounts=()=>S.accounts.filter(a=>a.kind==='provider'&&a.active);
+const bufferAccount=()=>S.accounts.find(a=>a.kind==='buffer');
+function byDateDesc(arr){
+  return [...arr].sort((a,b)=>{
+    const da=(a.ts||'')+String(a.id).padStart(9,'0');
+    const db=(b.ts||'')+String(b.id).padStart(9,'0');
+    return db<da?-1:db>da?1:0;
+  });
+}
+function msg(t,e){const m=$('msg');m.textContent=t||'';m.className='msg'+(e?' err':'');}
+
+// balance helpers over movements: to - from
+function balOf(accId){
+  let s=0;
+  for(const m of S.movements){
+    if(m.to_account===accId)s+=Number(m.amount);
+    if(m.from_account===accId)s-=Number(m.amount);
+  }
+  return s;
+}
+function bankBalance(){
+  let s=0;
+  for(const m of S.movements){
+    if(m.to_account==null)s+=Number(m.amount);
+    if(m.from_account==null)s-=Number(m.amount);
+  }
+  return s;
+}
+
+// ---- load ----
+async function loadCore(){
+  const [se,pe]=await Promise.all([sb.from('settings').select('*').single(),sb.from('people').select('*').order('id')]);
+  S.settings=se.data||{monthly_total:990}; S.people=pe.data||[];
+}
+async function loadAll(){
+  const [ac,mv,ch,mo,pc,kd,kh,khist,cho]=await Promise.all([
+    sb.from('accounts').select('*').order('id'),
+    sb.from('movements').select('*').order('id'),
+    sb.from('charges').select('*').order('id'),
+    sb.from('months').select('*').order('label'),
+    sb.from('provider_charges').select('*').order('id'),
+    sb.from('kaution_deposit').select('*').maybeSingle(),
+    sb.from('kaution_holders').select('*').order('id'),
+    sb.from('kaution_history').select('*').order('id'),
+    sb.from('contract_holders').select('*').order('id'),
+  ]);
+  S.accounts=ac.data||[]; S.movements=mv.data||[]; S.charges=ch.data||[]; S.months=mo.data||[]; S.provCharges=pc.data||[];
+  S.kd=kd.data||{total:0}; S.kHolders=kh.data||[]; S.kHist=khist.data||[]; S.contractHolders=cho.data||[];
+  // ensure every person has a person-account
+  const missing=S.people.filter(p=>!personAccount(p.id));
+  if(missing.length){
+    await sb.from('accounts').insert(missing.map(p=>({kind:'person',name:p.name,person_id:p.id})));
+    const {data}=await sb.from('accounts').select('*').order('id'); S.accounts=data||[];
+  }
+  await repairKautionLinks();
+}
+// external source account for kaution money entering the buffer (never touches the bank)
+function kautionSource(){ return S.accounts.find(a=>a.kind==='external'&&a.name==='Kaution'); }
+async function ensureKautionSource(){
+  let k=kautionSource();
+  if(!k){
+    const {data}=await sb.from('accounts').insert({kind:'external',name:'Kaution'}).select().single();
+    if(data){S.accounts.push(data);k=data;}
+  }
+  return k;
+}
+// One-time repair: link old kaution deductions (created before movement_id existed)
+// to their buffer movement, so date edits/deletes stay in sync.
+async function repairKautionLinks(){
+  const buf=bufferAccount(); if(!buf)return;
+  let changed=false;
+  const claimed=new Set(S.kHist.filter(x=>x.movement_id).map(x=>x.movement_id));
+  for(const h of S.kHist){
+    if(h.movement_id)continue;
+    if(!(Number(h.deduction)>0))continue;
+    // match any buffer-inbound movement of the same amount whose note mentions kaution deduction
+    const cand=S.movements.find(m=>
+      m.to_account===buf.id && m.from_account==null &&
+      Math.abs(Number(m.amount)-Number(h.deduction))<0.005 &&
+      /kaution deduction/i.test(m.note||'') &&
+      !claimed.has(m.id)
+    );
+    if(cand){
+      claimed.add(cand.id);
+      await sb.from('kaution_history').update({movement_id:cand.id}).eq('id',h.id); h.movement_id=cand.id;
+      if(h.ts&&(cand.ts||'')!==h.ts){ await sb.from('movements').update({ts:h.ts}).eq('id',cand.id); cand.ts=h.ts; }
+      changed=true;
+    }
+  }
+  if(changed){
+    const [{data:kh2},{data:mv2}]=await Promise.all([
+      sb.from('kaution_history').select('*').order('id'),
+      sb.from('movements').select('*').order('id'),
+    ]);
+    S.kHist=kh2||[]; S.movements=mv2||[];
+  }
+}
+
+// ---- login ----
+function fillGate(){
+  const sel=$('gPerson');
+  sel.innerHTML=S.people.length?S.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')+'<option value="new">— new person —</option>':'<option value="new">— create first person —</option>';
+  gHint();
+}
+function gHint(){const v=$('gPerson').value;if(v==='new'){$('gHint').textContent='You will be asked for a name.';return;}const p=S.people.find(x=>x.id===+v);$('gHint').textContent=(p&&!p.pin)?'First login — choose a PIN.':'';}
+$('gPerson').addEventListener('change',gHint);
+async function login(){
+  const v=$('gPerson').value,pin=$('gPin').value.trim(),gm=$('gMsg');
+  if(v==='new'){
+    const name=prompt('Name:');if(!name)return;
+    if(!pin){gm.textContent='Choose a PIN.';gm.className='gmsg err';return;}
+    const first=S.people.length===0;
+    const {data,error}=await sb.from('people').insert({name:name.trim(),pin,is_admin:first,resident:true}).select().single();
+    if(error){gm.textContent=error.message;gm.className='gmsg err';return;}
+    S.me=data;return enter();
+  }
+  const p=S.people.find(x=>x.id===+v);
+  if(!p){gm.textContent='Pick a name.';gm.className='gmsg err';return;}
+  if(!pin){gm.textContent='Enter PIN.';gm.className='gmsg err';return;}
+  if(!p.pin){await sb.from('people').update({pin}).eq('id',p.id);p.pin=pin;}
+  else if(p.pin!==pin){gm.textContent='Wrong PIN.';gm.className='gmsg err';return;}
+  S.me=p;enter();
+}
+$('gGo').addEventListener('click',login);
+$('gPin').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+async function enter(){
+  $('gate').style.display='none';$('app').style.display='block';
+  $('who').innerHTML=`${S.me.name}${S.me.is_admin?' · admin':''} · <a id="out">sign out</a>`;
+  $('out').addEventListener('click',()=>location.reload());
+  await loadAll();$('setTotal').value=S.settings.monthly_total;show('bank');
+}
+
+// ---- nav ----
+document.querySelectorAll('#nav a').forEach(a=>a.addEventListener('click',()=>show(a.dataset.t)));
+function show(t){
+  msg('');
+  document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.t===t));
+  ['bank','people','ledgers','providers','buffer','charges','kaution','statement','calc'].forEach(x=>$('s-'+x).style.display=x===t?'block':'none');
+  render();
+}
+function curTab(){const a=[...document.querySelectorAll('#nav a')].find(x=>x.classList.contains('on'));return a?a.dataset.t:'bank';}
+function render(){
+  const t=curTab();
+  if(t==='bank')renderBank();
+  if(t==='people')renderPeople();
+  if(t==='ledgers')renderLedgers();
+  if(t==='providers')renderProviders();
+  if(t==='buffer')renderBuffer();
+  if(t==='charges')renderCharges();
+  if(t==='kaution')renderKaution();
+  if(t==='statement')renderStatement();
+}
+
+// ---- BANK ----
+// per-person: taken out (bank->person), spent on providers (person->provider)
+function personTookOut(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>m.from_account==null&&m.to_account===pa.id).reduce((s,m)=>s+Number(m.amount),0):0;}
+function personSpentProv(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>{const t=acc(m.to_account);return m.from_account===pa.id&&t&&t.kind==='provider';}).reduce((s,m)=>s+Number(m.amount),0):0;}
+function personPaidIn(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>m.from_account===pa.id&&m.to_account==null).reduce((s,m)=>s+Number(m.amount),0):0;}
+function personCharged(pid){return S.charges.filter(c=>c.person_id===pid).reduce((s,c)=>s+Number(c.amount),0);}
+function renderBank(){
+  let paidIn=0,takenOut=0;
+  for(const m of S.movements){ if(m.to_account==null)paidIn+=Number(m.amount); if(m.from_account==null)takenOut+=Number(m.amount); }
+  const buf=bufferAccount(); const bufBal=buf?balOf(buf.id):0;
+  // 1) missing = sum of unpaid charges (charged - paid in, where positive)
+  let missing=0;
+  for(const p of S.people){ const d=personCharged(p.id)-personPaidIn(p.id); if(d>0.005)missing+=d; }
+  // 2) bank balance = paid in - taken out (taken out already includes buffer moves). Should tend to 0.
+  const balance=paidIn-takenOut;
+  // 3) bank owes people = sum of negative held (paid providers beyond what they took out)
+  let owes=0;
+  for(const p of S.people){ const held=personTookOut(p.id)-personSpentProv(p.id); if(held<-0.005)owes+=(-held); }
+  $('bMissing').innerHTML=`<span class="${missing>0.005?'red':''}">${eur(missing)}</span>`;
+  $('bBal').innerHTML=`<span class="${Math.abs(balance)>0.005?'red':''}">${eur(balance)}</span>`;
+  $('bOwes').innerHTML=`<span class="${owes>0.005?'red':''}">${eur(owes)}</span>`;
+  $('bBuf').textContent=eur(bufBal);
+  const notes=[];
+  if(missing>0.005)notes.push(`${eur(missing)} still owed to the bank in unpaid charges.`);
+  if(Math.abs(balance)>0.005)notes.push(`Balance isn't zero — ${eur(balance)} unaccounted for; find it and move it to buffer or fix a movement.`);
+  if(owes>0.005)notes.push(`Bank owes ${eur(owes)} to people who paid providers without taking out.`);
+  if(!notes.length)notes.push('Everything balances. ✓');
+  $('bankNote').innerHTML=notes.join(' ');
+  const rows=byDateDesc(S.movements).slice(0,15);
+  $('recentTable').querySelector('tbody').innerHTML=rows.length?rows.map(m=>`<tr><td>${m.ts||''}</td><td>${accName(m.from_account)}</td><td>${accName(m.to_account)}</td><td class="n">${eur(m.amount)}</td><td>${m.note||''}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">No movements yet. Use the buttons above.</td></tr>';
+}
+
+// ---- PEOPLE ----
+function renderPeople(){
+  const tb=$('peopleTable').querySelector('tbody');
+  tb.innerHTML=S.people.map(p=>{
+    const pa=personAccount(p.id);
+    const charged=S.charges.filter(c=>c.person_id===p.id).reduce((s,c)=>s+Number(c.amount),0);
+    const paidIn=S.movements.filter(m=>pa&&m.from_account===pa.id&&m.to_account==null).reduce((s,m)=>s+Number(m.amount),0);
+    const owed=charged-paidIn;
+    const took=personTookOut(p.id);
+    const spentProv=personSpentProv(p.id);
+    const held=took-spentProv; // + = holds bank cash, − = bank owes them
+    let state=[]; if(owed>0.005)state.push('owes dues'); if(held>0.005)state.push('holds bank cash'); else if(held<-0.005)state.push('bank owes them'); if(!state.length)state.push('clean');
+    return `<tr><td>${p.name}${p.id===S.me.id?' <b>(you)</b>':''}</td>
+      <td class="n ${owed>0.005?'red bold':''}">${eur(owed)}</td>
+      <td class="n ${held<-0.005?'bold':(held>0.005?'red bold':'')}" style="${held<-0.005?'color:#2a7':''}">${held>0?'':(held<0?'+':'')}${eur(Math.abs(held))}${held<-0.005?' owed':''}</td>
+      <td>${state.join(', ')}</td></tr>`;
+  }).join('');
+  $('pAdminNote').textContent=isAdmin()?'':'Only admin can add people.';
+}
+$('pAdd').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  const name=$('pName').value.trim();if(!name){msg('Name?',true);return;}
+  const {error}=await sb.from('people').insert({name,resident:true});if(error){msg(error.message,true);return;}
+  $('pName').value='';await loadCore();await loadAll();render();
+});
+
+// ---- LEDGERS ----
+function renderLedgers(){
+  $('ledgerWho').innerHTML='<option value="">— everyone —</option>'+S.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')+'<option value="none">— no person involved —</option>';
+  drawLedger();
+}
+$('ledgerWho').addEventListener('change',drawLedger);
+function ownsMovement(m){
+  const mine=personAccount(S.me.id);
+  return !!(mine&&(m.from_account===mine.id||m.to_account===mine.id));
+}
+function drawLedger(){
+  const raw=$('ledgerWho').value;
+  let rows=byDateDesc(S.movements);
+  if(raw==='none'){
+    const isPerson=id=>{const a=acc(id);return !!(a&&a.kind==='person');};
+    rows=rows.filter(m=>!isPerson(m.from_account)&&!isPerson(m.to_account));
+  } else if(raw){
+    const pa=personAccount(+raw);
+    rows=rows.filter(m=>pa&&(m.from_account===pa.id||m.to_account===pa.id));
+  }
+  const tb=$('ledgerTable').querySelector('tbody');
+  tb.innerHTML=rows.length?rows.map(m=>{
+    const person=whichPerson(m);
+    const flagged=m.note_needs_review;
+    const noteTxt=(m.note||'').replace(/"/g,'&quot;');
+    const canEdit=ownsMovement(m)||isAdmin();
+    let noteCell;
+    if(canEdit){
+      noteCell=`<input type="text" value="${noteTxt}" data-note="${m.id}" placeholder="add note…" style="width:150px;${flagged?'color:#b00000;border-color:#b00000;font-weight:bold':''}">`;
+    }else{
+      noteCell=`<span style="${flagged?'color:#b00000;font-weight:bold':''}">${m.note||''}</span>`;
+    }
+    const seenBtn=(flagged&&isAdmin())?` <button class="tiny" data-noteseen="${m.id}">seen</button>`:'';
+    const delBtn=isAdmin()?`<button class="tiny" data-mdel="${m.id}">×</button>`:'';
+    return `<tr><td>${m.ts||''}</td><td>${person}</td><td>${accName(m.from_account)}</td><td>${accName(m.to_account)}</td><td class="n">${eur(m.amount)}</td><td>${noteCell}${seenBtn}</td>
+      <td>${delBtn}</td></tr>`;
+  }).join(''):'<tr><td colspan="7" class="muted">No movements.</td></tr>';
+  tb.querySelectorAll('[data-mdel]').forEach(b=>b.addEventListener('click',async e=>{await sb.from('movements').delete().eq('id',+e.target.dataset.mdel);await loadAll();render();}));
+  tb.querySelectorAll('[data-note]').forEach(i=>i.addEventListener('change',async e=>{
+    const id=+e.target.dataset.note;
+    const m=S.movements.find(x=>x.id===id);
+    if(!m)return;
+    if(!(ownsMovement(m)||isAdmin())){msg('You can only note your own movements',true);return;}
+    await sb.from('movements').update({note:e.target.value,note_needs_review:true,note_edited_by:S.me.id,note_edited_at:new Date().toISOString()}).eq('id',id);
+    await loadAll();drawLedger();
+  }));
+  tb.querySelectorAll('[data-noteseen]').forEach(b=>b.addEventListener('click',async e=>{
+    await sb.from('movements').update({note_needs_review:false}).eq('id',+e.target.dataset.noteseen);
+    await loadAll();drawLedger();
+  }));
+  const pending=S.movements.filter(m=>m.note_needs_review).length;
+  const rn=$('ledgerReviewNote');
+  if(rn)rn.innerHTML=pending?`<span class="red bold">${pending} note${pending>1?'s':''} need admin review.</span>`+(isAdmin()?' Click "seen" to clear.':''):'';
+}
+function whichPerson(m){
+  for(const acid of [m.from_account,m.to_account]){const a=acc(acid);if(a&&a.kind==='person')return a.name;}
+  return '—';
+}
+
+// ---- PROVIDERS ----
+// most recent amount set for a provider in any month at or before `label`
+function lastProvAmount(accId,label){
+  const withMonth=S.provCharges
+    .map(pc=>({pc,mo:S.months.find(m=>m.id===pc.month_id)}))
+    .filter(x=>x.mo&&x.pc.account_id===accId&&x.mo.label<label)
+    .sort((a,b)=>a.mo.label<b.mo.label?1:-1);
+  return withMonth.length?Number(withMonth[0].pc.amount):null;
+}
+const PROV_DEFAULTS={'Gas':16,'Strom':14,'Internet':35,'Miete / Hausverwaltung':798};
+async function autofillMonth(label){
+  if(!/^\d{4}-\d{2}$/.test(label))return;
+  const mo=await ensureMonth(label);
+  const toAdd=[];
+  for(const a of providerAccounts()){
+    const exists=S.provCharges.find(x=>x.account_id===a.id&&x.month_id===mo.id);
+    if(exists)continue;
+    let amt=lastProvAmount(a.id,label);
+    if(amt==null)amt=PROV_DEFAULTS[a.name]!=null?PROV_DEFAULTS[a.name]:0;
+    toAdd.push({account_id:a.id,month_id:mo.id,amount:amt});
+  }
+  if(toAdd.length){await sb.from('provider_charges').insert(toAdd);await loadAll();}
+}
+function renderProviders(){
+  if(!$('provMonth').value)$('provMonth').value=curMonthLabel();
+  const label=$('provMonth').value.trim();
+  const mo=S.months.find(m=>m.label===label);
+  const tb=$('provTable').querySelector('tbody');
+  tb.innerHTML=providerAccounts().map(a=>{
+    const pc=mo?S.provCharges.find(x=>x.account_id===a.id&&x.month_id===mo.id):null;
+    const charge=pc?Number(pc.amount):(lastProvAmount(a.id,label)??PROV_DEFAULTS[a.name]??0);
+    // sum every movement INTO this provider tagged to this month (bank, a person, or "Mark paid")
+    const paid=mo?S.movements.filter(m=>m.to_account===a.id&&movementMonth(m)===label).reduce((s,m)=>s+Number(m.amount),0):0;
+    const gap=charge-paid;
+    const covered=charge>0 && paid>=charge-0.005;
+    const overpaid=charge>0 && paid>charge+0.005;
+    const noCharge=charge<=0.005;
+    let statusCell;
+    if(noCharge&&paid>0.005) statusCell=`<span style="color:#a70">paid ${eur(paid)}, no charge set</span>`;
+    else if(noCharge) statusCell='<span class="muted">no charge set</span>';
+    else if(covered) statusCell=`<span class="bold" style="color:#2a7">COVERED ✓</span>${overpaid?` <span style="color:#a70">(overpaid ${eur(paid-charge)})</span>`:''}`;
+    else if(paid>0.005) statusCell=`<span style="color:#a70">part-paid ${eur(paid)}</span>`;
+    else statusCell='<span class="red bold">UNPAID</span>';
+    const markedBy=pc&&pc.paid_at?((S.people.find(p=>p.id===pc.paid_by)||{}).name||''):'';
+    return `<tr style="${covered?'background:#e7f3e0':(paid>0.005?'background:#fff6e0':'background:#fbeeee')}">
+      <td class="bold">${a.name}</td>
+      <td class="n"><input type="number" step="0.01" value="${charge}" data-pcamt="${a.id}" style="width:90px"></td>
+      <td>${statusCell}</td>
+      <td class="n ${gap>0.005?'red bold':''}">${noCharge?'—':eur(gap)}</td>
+      <td>${holderCell(a.id,label)}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="5" class="muted">No providers.</td></tr>';
+  tb.querySelectorAll('[data-pcamt]').forEach(i=>i.addEventListener('change',e=>setProvCharge(+e.target.dataset.pcamt,label,Number(e.target.value))));
+  tb.querySelectorAll('[data-cth]').forEach(s=>s.addEventListener('change',e=>setSingleHolder(+e.target.dataset.cth,label,e.target.value?+e.target.value:null)));
+  tb.querySelectorAll('[data-cthm]').forEach(c=>c.addEventListener('change',e=>toggleHolder(+e.target.dataset.cthm,label,+e.target.value,e.target.checked)));
+  // coverage note
+  const provs=providerAccounts();
+  const mo2=S.months.find(m=>m.label===label);
+  let cov=0,heldN=0;
+  for(const a of provs){
+    const paidA=mo2?S.movements.filter(m=>m.to_account===a.id&&movementMonth(m)===label).reduce((s,m)=>s+Number(m.amount),0):0;
+    const pcA=mo2?S.provCharges.find(x=>x.account_id===a.id&&x.month_id===mo2.id):null;
+    const chargeA=pcA?Number(pcA.amount):(lastProvAmount(a.id,label)??PROV_DEFAULTS[a.name]??0);
+    if(chargeA>0&&paidA>=chargeA-0.005)cov++;
+    if(holdersFor(a.id,label).length)heldN++;
+  }
+  $('provCoverNote').innerHTML=provs.length?`${cov} of ${provs.length} covered · ${heldN} of ${provs.length} have a contract holder for ${label}.`:'';
+  // history
+  const rows=[...S.contractHolders].map(r=>({r,mo:S.months.find(m=>m.id===r.month_id)})).filter(x=>x.mo&&x.r.person_id)
+    .sort((a,b)=>a.mo.label<b.mo.label?1:(a.mo.label>b.mo.label?-1:0));
+  $('ctHistTable').querySelector('tbody').innerHTML=rows.length?rows.map(x=>`<tr><td>${x.mo.label}</td><td>${accName(x.r.account_id)}</td><td>${(S.people.find(p=>p.id===x.r.person_id)||{}).name||'—'}</td></tr>`).join(''):'<tr><td colspan="3" class="muted">No history yet.</td></tr>';
+}
+function isMultiHolder(accId){
+  const a=acc(accId); return !!(a&&/hausverwaltung/i.test(a.name));
+}
+function holdersFor(accId,label){
+  const mo=S.months.find(m=>m.label===label);
+  if(!mo)return [];
+  return S.contractHolders.filter(x=>x.account_id===accId&&x.month_id===mo.id&&x.person_id);
+}
+function holderCell(accId,label){
+  const recs=holdersFor(accId,label);
+  const ids=recs.map(r=>r.person_id);
+  if(isMultiHolder(accId)){
+    if(isAdmin()){
+      return '<div style="display:flex;flex-direction:column;gap:2px">'+S.people.map(p=>`<label style="font-size:13px"><input type="checkbox" data-cthm="${accId}" value="${p.id}" ${ids.includes(p.id)?'checked':''}> ${p.name}</label>`).join('')+'</div>';
+    }
+    return ids.length?ids.map(id=>(S.people.find(p=>p.id===id)||{}).name).join(', '):'<span class="red">— nobody —</span>';
+  }
+  // single holder
+  const hid=ids.length?ids[0]:null;
+  if(isAdmin()){
+    const opts=S.people.map(p=>`<option value="${p.id}" ${hid===p.id?'selected':''}>${p.name}</option>`).join('');
+    return `<select data-cth="${accId}"><option value="">— nobody —</option>${opts}</select>`;
+  }
+  return hid?((S.people.find(p=>p.id===hid)||{}).name||'—'):'<span class="red">— nobody —</span>';
+}
+async function ensureMonth(label){
+  let mo=S.months.find(m=>m.label===label);
+  if(!mo){const {data}=await sb.from('months').insert({label}).select().single();mo=data;S.months.push(mo);}
+  return mo;
+}
+async function setProvCharge(accId,label,amount){
+  if(!/^\d{4}-\d{2}$/.test(label)){msg('Month as YYYY-MM',true);return;}
+  const mo=await ensureMonth(label);
+  const pc=S.provCharges.find(x=>x.account_id===accId&&x.month_id===mo.id);
+  if(pc){await sb.from('provider_charges').update({amount}).eq('id',pc.id);}
+  else{await sb.from('provider_charges').insert({account_id:accId,month_id:mo.id,amount});}
+  await loadAll();renderProviders();
+}
+async function payProvider(accId,label){
+  const mo=await ensureMonth(label);
+  let pc=S.provCharges.find(x=>x.account_id===accId&&x.month_id===mo.id);
+  const amount=pc?Number(pc.amount):0;
+  if(amount<=0){msg('Set the charge amount first',true);return;}
+  // 1) movement: take from bank -> provider (person administers)
+  const {data:mvRow,error:e1}=await sb.from('movements').insert({ts:new Date().toISOString().slice(0,10),from_account:null,to_account:accId,amount,month_id:mo.id,note:'paid '+accName(accId)+' for '+label,created_by:S.me.id}).select().single();
+  if(e1){msg(e1.message,true);return;}
+  // 2) mark provider charge paid
+  if(!pc){const {data}=await sb.from('provider_charges').insert({account_id:accId,month_id:mo.id,amount}).select().single();pc=data;}
+  await sb.from('provider_charges').update({paid_by:S.me.id,paid_at:new Date().toISOString(),movement_id:mvRow.id}).eq('id',pc.id);
+  await loadAll();renderProviders();msg('Paid '+accName(accId)+' '+eur(amount)+' from the bank');
+}
+async function undoProvider(pcId){
+  const pc=S.provCharges.find(x=>x.id===pcId);
+  if(pc){
+    // delete the linked movement if we have its id
+    if(pc.movement_id){ await sb.from('movements').delete().eq('id',pc.movement_id); }
+    // also sweep any matching bank->provider movement for this provider+month (in case the link was lost)
+    const mo=S.months.find(m=>m.id===pc.month_id);
+    if(mo){
+      const note='paid '+accName(pc.account_id)+' for '+mo.label;
+      const strays=S.movements.filter(m=>m.from_account==null&&m.to_account===pc.account_id&&m.month_id===pc.month_id&&(m.note||'')===note);
+      for(const s of strays){ await sb.from('movements').delete().eq('id',s.id); }
+    }
+    await sb.from('provider_charges').update({paid_by:null,paid_at:null,movement_id:null}).eq('id',pcId);
+  }
+  await loadAll();renderProviders();msg('Payment undone — mark and movement removed.');
+}
+$('provLoad').addEventListener('click',async()=>{
+  const label=$('provMonth').value.trim();
+  await autofillMonth(label);
+  renderProviders();
+});
+$('provAdd').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  const name=$('provName').value.trim();if(!name){msg('Name?',true);return;}
+  await sb.from('accounts').insert({kind:'provider',name});$('provName').value='';
+  await loadAll();render();
+});
+
+// ---- BUFFER ----
+function renderBuffer(){
+  const buf=bufferAccount();
+  $('bufBal').textContent=eur(buf?balOf(buf.id):0);
+  const rows=buf?byDateDesc(S.movements.filter(m=>m.from_account===buf.id||m.to_account===buf.id)):[];
+  $('bufTable').querySelector('tbody').innerHTML=rows.length?rows.map(m=>`<tr><td>${m.ts||''}</td><td>${accName(m.from_account)}</td><td>${accName(m.to_account)}</td><td class="n">${eur(m.amount)}</td><td>${m.note||''}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">No buffer movements.</td></tr>';
+}
+
+// ---- CHARGES ----
+function renderCharges(){
+  const tb=$('chargeTable').querySelector('tbody');
+  const chargesSorted=[...S.charges].sort((a,b)=>{
+    const la=(S.months.find(m=>m.id===a.month_id)||{}).label||'';
+    const lb=(S.months.find(m=>m.id===b.month_id)||{}).label||'';
+    if(la!==lb)return lb<la?-1:1;
+    return b.id-a.id;
+  });
+  tb.innerHTML=S.charges.length?chargesSorted.map(c=>{
+    const pa=personAccount(c.person_id);
+    const mo=S.months.find(m=>m.id===c.month_id);
+    const paidIn=pa&&mo?S.movements.filter(m=>m.from_account===pa.id&&m.to_account==null&&m.month_id===c.month_id).reduce((s,m)=>s+Number(m.amount),0):0;
+    const state=paidIn>=Number(c.amount)-0.005?'paid':'<span class="red bold">OPEN</span>';
+    return `<tr><td>${mo?mo.label:'—'}</td><td>${(S.people.find(p=>p.id===c.person_id)||{}).name||'—'}</td>
+      <td class="n">${isAdmin()?`<input type="number" step="0.01" value="${c.amount}" data-chamt="${c.id}" style="width:90px">`:eur(c.amount)}</td><td class="n">${eur(paidIn)}</td><td>${state}</td>
+      <td>${isAdmin()?`<button class="tiny" data-chdel="${c.id}">×</button>`:''}</td></tr>`;
+  }).join(''):'<tr><td colspan="6" class="muted">No charges yet.</td></tr>';
+  tb.querySelectorAll('[data-chamt]').forEach(i=>i.addEventListener('change',async e=>{await sb.from('charges').update({amount:Number(e.target.value)}).eq('id',+e.target.dataset.chamt);await loadAll();render();}));
+  tb.querySelectorAll('[data-chdel]').forEach(b=>b.addEventListener('click',async e=>{await sb.from('charges').delete().eq('id',+e.target.dataset.chdel);await loadAll();render();}));
+  const res=S.people.filter(p=>p.resident!==false).length||1;
+  $('shareNote').textContent=`Default split ${eur(S.settings.monthly_total)} ÷ residents`;
+  // tick list
+  const pick=$('chPickList');
+  if(pick){
+    pick.innerHTML='<b>Charge whom this month:</b><br>'+S.people.map(p=>`<label style="display:inline-block;margin:4px 12px 4px 0;font-size:14px"><input type="checkbox" class="chpick" value="${p.id}" ${p.resident!==false?'checked':''}> ${p.name}</label>`).join('')+'<div class="muted" id="chSplitPreview" style="font-size:12px;margin-top:4px"></div>';
+    const upd=()=>{const n=pick.querySelectorAll('.chpick:checked').length||0;$('chSplitPreview').textContent=n?`${eur(S.settings.monthly_total)} ÷ ${n} = ${eur(Number(S.settings.monthly_total)/n)} each`:'Tick at least one person.';};
+    pick.querySelectorAll('.chpick').forEach(c=>c.addEventListener('change',upd));upd();
+  }
+}
+$('chGen').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  const label=$('chMonth').value.trim();
+  if(!/^\d{4}-\d{2}$/.test(label)){msg('Month as YYYY-MM',true);return;}
+  const ticked=[...document.querySelectorAll('.chpick:checked')].map(c=>+c.value);
+  if(!ticked.length){msg('Tick at least one person',true);return;}
+  let mo=S.months.find(m=>m.label===label);
+  if(!mo){const {data}=await sb.from('months').insert({label}).select().single();mo=data;S.months.push(mo);}
+  const share=Math.round(Number(S.settings.monthly_total)/ticked.length*100)/100;
+  const existing=new Set(S.charges.filter(c=>c.month_id===mo.id).map(c=>c.person_id));
+  const toAdd=ticked.filter(pid=>!existing.has(pid)).map(pid=>({month_id:mo.id,person_id:pid,amount:share}));
+  if(toAdd.length)await sb.from('charges').insert(toAdd);
+  await loadAll();render();msg('Charged '+ticked.length+' for '+label+' at '+eur(share)+' each'+(toAdd.length<ticked.length?' (some already charged)':''));
+});
+$('setSave').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  await sb.from('settings').update({monthly_total:Number($('setTotal').value)||0}).eq('id',1);
+  await loadCore();render();msg('Saved.');
+});
+
+// ---- MOVEMENT DIALOG ----
+let mvMode='in';
+function openMv(mode){
+  mvMode=mode;
+  const t={in:'Pay in to bank',out:'Take out of bank',pay:'Pay a provider',buffer:'Move to / from buffer'}[mode];
+  $('mvTitle').textContent=t;
+  // non-admins can only add movements for themselves; admin can pick anyone
+  if(isAdmin()){
+    $('mvPerson').innerHTML=S.people.map(p=>`<option value="${p.id}" ${p.id===S.me.id?'selected':''}>${p.name}</option>`).join('');
+    $('mvPerson').disabled=false;
+  }else{
+    $('mvPerson').innerHTML=`<option value="${S.me.id}" selected>${S.me.name}</option>`;
+    $('mvPerson').disabled=true;
+  }
+  const other=$('mvOther');
+  if(mode==='pay'){ $('mvOtherWrap').style.display='block'; $('mvOtherL').textContent='Provider'; other.innerHTML=providerAccounts().map(a=>`<option value="${a.id}">${a.name}</option>`).join(''); }
+  else if(mode==='buffer'){ $('mvOtherWrap').style.display='block'; $('mvOtherL').textContent='Direction'; other.innerHTML='<option value="to">Add to buffer (bank → buffer)</option><option value="from">Spend from buffer (buffer → bank)</option>'; $('mvPersonWrap').style.display='none'; }
+  else { $('mvOtherWrap').style.display='none'; }
+  if(mode!=='buffer')$('mvPersonWrap').style.display='block';
+  $('mvAmt').value=''; $('mvNote').value=''; $('mvMonth').value=curMonthLabel(); $('mvDate').value=new Date().toISOString().slice(0,10); $('mvMsg').textContent='';
+  $('mvDlg').showModal();
+}
+function curMonthLabel(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+$('btnIn').addEventListener('click',()=>openMv('in'));
+$('btnOut').addEventListener('click',()=>openMv('out'));
+$('btnPay').addEventListener('click',()=>openMv('pay'));
+$('btnBuffer').addEventListener('click',()=>openMv('buffer'));
+$('mvX').addEventListener('click',()=>$('mvDlg').close());
+$('mvGo').addEventListener('click',async()=>{
+  const amt=Number($('mvAmt').value)||0;
+  if(amt<=0){$('mvMsg').textContent='Enter an amount.';return;}
+  const label=$('mvMonth').value.trim()||null;
+  let month_id=null;
+  if(label){let mo=S.months.find(m=>m.label===label);if(!mo){const {data}=await sb.from('months').insert({label}).select().single();mo=data;S.months.push(mo);}month_id=mo.id;}
+  const note=$('mvNote').value||null;
+  let from=null,to=null;
+  if(mvMode==='buffer'){
+    const buf=bufferAccount(); const dir=$('mvOther').value;
+    if(dir==='to'){from=null;to=buf.id;} else {from=buf.id;to=null;}
+  } else {
+    let pid=+$('mvPerson').value;
+    if(!isAdmin())pid=S.me.id;  // non-admins can only record for themselves
+    const pa=personAccount(pid);
+    if(!pa){$('mvMsg').textContent='No account for that person.';return;}
+    if(mvMode==='in'){from=pa.id;to=null;}
+    else if(mvMode==='out'){from=null;to=pa.id;}
+    else if(mvMode==='pay'){from=pa.id;to=+$('mvOther').value;}
+  }
+  const {error}=await sb.from('movements').insert({ts:$('mvDate').value||new Date().toISOString().slice(0,10),from_account:from,to_account:to,amount:amt,month_id,note,created_by:S.me.id});
+  if(error){$('mvMsg').textContent=error.message;return;}
+  $('mvDlg').close(); await loadAll(); render();
+});
+
+// ---- KAUTION ----
+// Holders are ALWAYS computed from history (single source of truth).
+function computeHolders(){
+  const bal={};
+  const add=(pid,d)=>{ if(pid==null)return; bal[pid]=(bal[pid]||0)+d; };
+  for(const h of [...S.kHist].sort((a,b)=>a.id-b.id)){
+    const amt=Number(h.amount)||0;
+    if(h.kind==='initial'){ add(h.to_id,amt); }
+    else if(h.kind==='handover'){ add(h.from_id,-amt); add(h.to_id,amt); }
+    // 'deduction' entries (if any legacy) don't change holders here; deductions now ride on handovers and go to buffer
+  }
+  return Object.entries(bal)
+    .map(([pid,amt])=>({person_id:+pid,amount:Math.round(amt*100)/100}))
+    .filter(h=>Math.abs(h.amount)>0.005);
+}
+function renderKaution(){
+  const nmp=id=>{const p=S.people.find(x=>x.id===id);return p?p.name:'—';};
+  $('kdTotal').value=S.kd?S.kd.total:0;
+  // current holders (computed, highlighted on top)
+  const holders=computeHolders().sort((a,b)=>b.amount-a.amount);
+  const tb=$('kHoldersTable').querySelector('tbody');
+  tb.innerHTML=holders.length?holders.map(h=>`<tr style="background:#fff6cc">
+    <td class="bold">${nmp(h.person_id)}</td>
+    <td class="n bold ${h.amount<0?'red':''}">${eur(h.amount)}</td>
+    <td></td></tr>`).join(''):'<tr><td colspan="3" class="muted">Nobody currently holds the deposit.</td></tr>';
+  const sum=holders.reduce((s,h)=>s+h.amount,0);
+  const total=S.kd?Number(S.kd.total):0;
+  const diff=total-sum;
+  $('kSumNote').innerHTML=`Held by tenants: <b>${eur(sum)}</b> of <b>${eur(total)}</b> deposit.`+(Math.abs(diff)>0.005?` <span class="red">(${eur(diff)} unaccounted)</span>`:' ✓ matches');
+  // history
+  const ht=$('kHistTable').querySelector('tbody');
+  ht.innerHTML=S.kHist.length?byDateDesc(S.kHist).map(h=>`<tr>
+    <td>${isAdmin()?`<input type="date" value="${h.ts||''}" data-khdate="${h.id}" style="width:130px">`:(h.ts||'')}</td><td>${h.kind}</td><td>${h.from_id?nmp(h.from_id):'Hausverw.'}</td><td>${h.to_id?nmp(h.to_id):'—'}</td>
+    <td class="n">${eur(h.amount)}</td><td class="n ${Number(h.deduction)>0?'red':''}">${Number(h.deduction)>0?eur(h.deduction):'—'}</td><td>${h.reason||''}</td>
+    <td>${isAdmin()?`<button class="tiny" data-khhdel="${h.id}">×</button>`:''}</td></tr>`).join(''):'<tr><td colspan="8" class="muted">No history yet.</td></tr>';
+  ht.querySelectorAll('[data-khdate]').forEach(i=>i.addEventListener('change',async e=>{
+    const id=+e.target.dataset.khdate;
+    const h=S.kHist.find(x=>x.id===id);
+    const newDate=e.target.value||null;
+    await sb.from('kaution_history').update({ts:newDate}).eq('id',id);
+    // keep the linked deduction->buffer movement's date in sync
+    if(h&&h.movement_id&&newDate){
+      await sb.from('movements').update({ts:newDate}).eq('id',h.movement_id);
+    }
+    await loadAll();renderKaution();
+  }));
+  ht.querySelectorAll('[data-khhdel]').forEach(b=>b.addEventListener('click',async e=>{
+    const id=+e.target.dataset.khhdel;
+    const h=S.kHist.find(x=>x.id===id);
+    if(h&&h.movement_id)await sb.from('movements').delete().eq('id',h.movement_id);
+    await sb.from('kaution_history').delete().eq('id',id);
+    await loadAll();renderKaution();msg('Entry deleted. Holders recalculated.');
+  }));
+  // selects
+  const opts=S.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  $('khkPayer').innerHTML=opts;
+  $('khkPayee').innerHTML='<option value="">— Hausverwaltung (first payment) —</option>'+opts;
+}
+$('kdSave').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  await sb.from('kaution_deposit').update({total:Number($('kdTotal').value)||0}).eq('id',1);
+  await loadAll();renderKaution();msg('Saved.');
+});
+$('kSyncDates').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  const buf=bufferAccount();
+  const sm=$('kSyncMsg');
+  if(!buf){sm.textContent='No buffer account found.';return;}
+  const ks=await ensureKautionSource();
+  let linked=0,dated=0,resourced=0,unmatched=0;
+  const claimed=new Set(S.kHist.filter(x=>x.movement_id).map(x=>x.movement_id));
+  for(const h of S.kHist){
+    if(!(Number(h.deduction)>0))continue;
+    let mvId=h.movement_id;
+    if(!mvId){
+      const cand=S.movements.find(m=>m.to_account===buf.id&&(m.from_account==null||m.from_account===ks.id)&&Math.abs(Number(m.amount)-Number(h.deduction))<0.005&&/kaution deduction/i.test(m.note||'')&&!claimed.has(m.id));
+      if(cand){ mvId=cand.id; claimed.add(cand.id); await sb.from('kaution_history').update({movement_id:cand.id}).eq('id',h.id); linked++; }
+      else { unmatched++; continue; }
+    }
+    const mv=S.movements.find(m=>m.id===mvId);
+    if(mv){
+      // convert bank-sourced (null) kaution movements to the external Kaution source
+      if(mv.from_account==null&&ks){ await sb.from('movements').update({from_account:ks.id}).eq('id',mvId); resourced++; }
+      if(h.ts&&(mv.ts||'')!==h.ts){ await sb.from('movements').update({ts:h.ts}).eq('id',mvId); dated++; }
+    }
+  }
+  await loadAll();renderKaution();
+  sm.innerHTML=`Linked ${linked}, re-dated ${dated}, moved off bank ${resourced}${unmatched?`, <span class="red">${unmatched} unmatched</span>`:''}. Check the Ledger & Bank.`;
+});
+$('khkAddHand').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  const payer=+$('khkPayer').value;
+  const payee=$('khkPayee').value?+$('khkPayee').value:null;
+  const amt=Number($('khkAmt').value)||0;
+  const ded=Number($('khkDedAmt').value)||0;
+  const reason=$('khkDedReason').value||null;
+  if(amt<=0){msg('Enter the deposit amount',true);return;}
+  const kind=payee==null?'initial':'handover';
+  const today=new Date().toISOString().slice(0,10);
+  // deduction -> buffer automatically (as a movement into Buffer), created first so we can link it
+  let mvId=null;
+  if(ded>0){
+    const buf=bufferAccount();
+    const ks=await ensureKautionSource();
+    if(buf&&ks){
+      const {data:mvRow}=await sb.from('movements').insert({ts:today,from_account:ks.id,to_account:buf.id,amount:ded,note:'from kaution deduction'+(reason?' ('+reason+')':''),created_by:S.me.id}).select().single();
+      if(mvRow)mvId=mvRow.id;
+    }
+  }
+  // history: record handover (full amount) with any deduction noted, linked to the movement
+  await sb.from('kaution_history').insert({kind,from_id:payee,to_id:payer,amount:amt,deduction:ded,reason:reason,ts:today,movement_id:mvId});
+  $('khkAmt').value='';$('khkDedAmt').value='';$('khkDedReason').value='';
+  await loadAll();renderKaution();msg('Recorded.'+(ded>0?' Deduction of '+eur(ded)+' added to buffer.':''));
+});
+
+// ---- STATEMENT ----
+// A movement's month = its tagged month_id label; if it has none, fall back to its date.
+function movementMonth(m){
+  if(m.month_id){ const mm=S.months.find(x=>x.id===m.month_id); if(mm)return mm.label; }
+  return (m.ts||'').slice(0,7);
+}
+function renderStatement(){
+  if(!$('stMonth').value)$('stMonth').value=curMonthLabel();
+  const label=$('stMonth').value.trim();
+  const movsThis=S.movements.filter(m=>movementMonth(m)===label);
+  const movs=byDateDesc(movsThis);
+  // summary
+  let paidIn=0,takenOut=0,toProviders=0,toBuffer=0,fromBuffer=0;
+  const buf=bufferAccount();
+  for(const m of movsThis){
+    if(m.to_account==null)paidIn+=Number(m.amount);
+    if(m.from_account==null)takenOut+=Number(m.amount);
+    const to=acc(m.to_account);
+    if(to&&to.kind==='provider')toProviders+=Number(m.amount);
+    if(buf&&m.to_account===buf.id)toBuffer+=Number(m.amount);
+    if(buf&&m.from_account===buf.id)fromBuffer+=Number(m.amount);
+  }
+  // 'taken out' already includes money moved to buffer (buffer is a bank->buffer movement),
+  // so balance = paid in − taken out. Do NOT subtract buffer again.
+  const bufThisMonth=(toBuffer-fromBuffer);
+  const monthBalance=paidIn-takenOut;
+  // running leftover through end of this month
+  let runIn=0,runOut=0;
+  for(const m of S.movements){
+    if(movementMonth(m)<=label){
+      if(m.to_account==null)runIn+=Number(m.amount);
+      if(m.from_account==null)runOut+=Number(m.amount);
+    }
+  }
+  const runningLeftover=runIn-runOut;
+  $('stSummary').innerHTML=`
+    <div class="stat"><div class="k">Paid in</div><div class="v">${eur(paidIn)}</div></div>
+    <div class="stat"><div class="k">Taken out (incl. buffer)</div><div class="v">${eur(takenOut)}</div></div>
+    <div class="stat"><div class="k">To providers</div><div class="v">${eur(toProviders)}</div></div>
+    <div class="stat"><div class="k">Buffer +/− this month</div><div class="v">${eur(bufThisMonth)}</div></div>
+    <div class="stat"><div class="k">This month's balance</div><div class="v"><span class="${Math.abs(monthBalance)>0.005?'red':''}">${eur(monthBalance)}</span></div></div>
+    <div class="stat"><div class="k">Running leftover thru ${label} (should be ~0)</div><div class="v"><span class="${Math.abs(runningLeftover)>0.005?'red':''}">${eur(runningLeftover)}</span></div></div>`;
+  const tb=$('stTable').querySelector('tbody');
+  tb.innerHTML=movs.length?movs.map(m=>`<tr><td>${m.ts||''}</td><td>${movementMonth(m)}${m.month_id?'':' <span class="muted">(by date)</span>'}</td><td>${whichPerson(m)}</td><td>${accName(m.from_account)}</td><td>${accName(m.to_account)}</td><td class="n">${eur(m.amount)}</td><td>${m.note||''}</td></tr>`).join(''):'<tr><td colspan="7" class="muted">No movements this month.</td></tr>';
+}
+$('stShow').addEventListener('click',renderStatement);
+
+async function setSingleHolder(accId,label,pid){
+  if(!isAdmin()){msg('Admin only',true);return;}
+  let mo=S.months.find(m=>m.label===label);
+  if(!mo){const {data}=await sb.from('months').insert({label}).select().single();mo=data;S.months.push(mo);}
+  // remove all existing holders for this provider/month, then add the chosen one (if any)
+  await sb.from('contract_holders').delete().eq('account_id',accId).eq('month_id',mo.id);
+  if(pid)await sb.from('contract_holders').insert({account_id:accId,month_id:mo.id,person_id:pid});
+  await loadAll();renderProviders();
+}
+async function toggleHolder(accId,label,pid,on){
+  if(!isAdmin()){msg('Admin only',true);return;}
+  let mo=S.months.find(m=>m.label===label);
+  if(!mo){const {data}=await sb.from('months').insert({label}).select().single();mo=data;S.months.push(mo);}
+  if(on){
+    const exists=S.contractHolders.find(x=>x.account_id===accId&&x.month_id===mo.id&&x.person_id===pid);
+    if(!exists)await sb.from('contract_holders').insert({account_id:accId,month_id:mo.id,person_id:pid});
+  }else{
+    await sb.from('contract_holders').delete().eq('account_id',accId).eq('month_id',mo.id).eq('person_id',pid);
+  }
+  await loadAll();renderProviders();
+}
+
+// ---- CALCULATOR ----
+(function(){
+  let expr='';
+  const disp=()=>{$('calcDisp').value=expr===''?'0':expr;};
+  function press(k){
+    if(k==='C'){expr='';}
+    else if(k==='back'){expr=expr.slice(0,-1);}
+    else if(k==='='){
+      try{
+        const safe=expr.replace(/[^0-9+\-*/.%() ]/g,'');
+        // percent: treat a% as a/100
+        const js=safe.replace(/(\d+(\.\d+)?)%/g,'($1/100)');
+        let r=Function('"use strict";return ('+js+')')();
+        if(!isFinite(r))r='';
+        expr=String(Math.round((Number(r)+Number.EPSILON)*100)/100);
+      }catch(e){ /* leave as is */ }
+    }
+    else{ expr+=k; }
+    disp();
+  }
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('.ck'); if(!b)return; press(b.dataset.k);
+  });
+  // keyboard when calc tab visible
+  document.addEventListener('keydown',e=>{
+    if($('s-calc').style.display==='none')return;
+    const k=e.key;
+    if(/[0-9.+\-*/%]/.test(k)){press(k);}
+    else if(k==='Enter'||k==='='){e.preventDefault();press('=');}
+    else if(k==='Backspace'){press('back');}
+    else if(k==='Escape'){press('C');}
+  });
+})();
+
+// ---- boot ----
+(async()=>{try{await loadCore();fillGate();}catch(e){$('gMsg').textContent='DB error: '+e.message;$('gMsg').className='gmsg err';}})();
+</script>
+</body>
+</html>
