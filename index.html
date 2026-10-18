@@ -509,7 +509,7 @@ function renderPeople(){
     const pa=personAccount(p.id);
     const charged=S.charges.filter(c=>c.person_id===p.id).reduce((s,c)=>s+Number(c.amount),0);
     const paidIn=S.movements.filter(m=>pa&&m.from_account===pa.id&&m.to_account==null).reduce((s,m)=>s+Number(m.amount),0);
-    const owed=charged-paidIn;
+    const owed=Math.max(0,charged-paidIn);
     const took=personTookOut(p.id);
     const spentProv=personSpentProv(p.id);
     const held=took-spentProv; // + = holds bank cash, − = bank owes them
@@ -765,7 +765,13 @@ function renderCharges(){
       <td>${isAdmin()?`<button class="tiny" data-chdel="${c.id}">×</button>`:''}</td></tr>`;
   }).join(''):'<tr><td colspan="6" class="muted">No charges yet.</td></tr>';
   tb.querySelectorAll('[data-chamt]').forEach(i=>i.addEventListener('change',async e=>{await sb.from('charges').update({amount:Number(e.target.value)}).eq('id',+e.target.dataset.chamt);await loadAll();render();}));
-  tb.querySelectorAll('[data-chdel]').forEach(b=>b.addEventListener('click',async e=>{await sb.from('charges').delete().eq('id',+e.target.dataset.chdel);await loadAll();render();}));
+  tb.querySelectorAll('[data-chdel]').forEach(b=>b.addEventListener('click',async e=>{
+    if(!isAdmin()){msg('Only admin can delete charges',true);return;}
+    const id=+e.target.dataset.chdel;
+    const {error}=await sb.from('charges').delete().eq('id',id);
+    if(error){msg('Could not delete: '+error.message,true);return;}
+    await loadAll();render();msg('Charge deleted.');
+  }));
   const res=S.people.filter(p=>p.resident!==false).length||1;
   $('shareNote').textContent=`Default split ${eur(S.settings.monthly_total)} ÷ residents`;
   // tick list
@@ -786,9 +792,16 @@ $('chGen').addEventListener('click',async()=>{
   if(!mo){const {data}=await sb.from('months').insert({label}).select().single();mo=data;S.months.push(mo);}
   const share=Math.round(Number(S.settings.monthly_total)/ticked.length*100)/100;
   const existing=new Set(S.charges.filter(c=>c.month_id===mo.id).map(c=>c.person_id));
+  const already=ticked.filter(pid=>existing.has(pid));
   const toAdd=ticked.filter(pid=>!existing.has(pid)).map(pid=>({month_id:mo.id,person_id:pid,amount:share}));
+  if(already.length){
+    const names=already.map(pid=>(S.people.find(p=>p.id===pid)||{}).name||'?').join(', ');
+    if(!toAdd.length){msg('Everyone ticked is already charged for '+label+' ('+names+'). Nothing added.',true);return;}
+    if(!confirm(label+' is already charged for: '+names+'.\nThey will be skipped. Charge the remaining '+toAdd.length+' people?'))return;
+  }
   if(toAdd.length)await sb.from('charges').insert(toAdd);
-  await loadAll();render();msg('Charged '+ticked.length+' for '+label+' at '+eur(share)+' each'+(toAdd.length<ticked.length?' (some already charged)':''));
+  await loadAll();render();
+  msg(toAdd.length?('Charged '+toAdd.length+' for '+label+' at '+eur(share)+' each'+(already.length?' ('+already.length+' already charged, skipped)':'')):'Nothing added.');
 });
 $('setSave').addEventListener('click',async()=>{
   if(!isAdmin()){msg('Admin only',true);return;}
