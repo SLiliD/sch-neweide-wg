@@ -258,7 +258,7 @@
       <div><label>&nbsp;</label><button id="clThis">This week</button></div>
     </div>
     <div class="muted" id="clWeekNote" style="font-size:12px"></div>
-    <table id="clTable"><thead><tr><th>Task</th><th>Assigned to</th><th>Done?</th></tr></thead><tbody></tbody></table>
+    <div id="clList"></div>
     <hr>
     <h3>Tasks</h3>
     <table id="clTaskTable"><thead><tr><th>Task</th><th></th></tr></thead><tbody></tbody></table>
@@ -278,8 +278,9 @@
       <div><button id="calNext">Next ›</button></div>
       <div><button id="calToday">Today</button></div>
     </div>
-    <div class="muted" style="font-size:12px">Click a day to add an event. The ⟳ marker shows who's on cleaning that week.</div>
+    <div class="muted" style="font-size:12px">Click a day to add an event. Click the ⟳ cleaning marker on a week to open that week's task list.</div>
     <div id="calGrid" style="margin-top:8px"></div>
+    <div id="calWeekPanel" style="margin-top:10px"></div>
   </section>
 
   <!-- CALC -->
@@ -332,7 +333,7 @@ const sb=createClient('https://zaczerqwmnvojvojskds.supabase.co','sb_publishable
 const $=id=>document.getElementById(id);
 const eur=n=>(Number(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 
-let S={me:null,settings:null,people:[],accounts:[],movements:[],charges:[],months:[],provCharges:[],kd:{total:0},kHolders:[],kHist:[],contractHolders:[],clTasks:[],clLog:[],events:[]};
+let S={me:null,settings:null,people:[],accounts:[],movements:[],charges:[],months:[],provCharges:[],kd:{total:0},kHolders:[],kHist:[],contractHolders:[],clTasks:[],clLog:[],events:[],clSubtasks:[]};
 const isAdmin=()=>S.me&&S.me.is_admin;
 const acc=id=>S.accounts.find(a=>a.id===id);
 const accName=id=>id==null?'BANK':(acc(id)?acc(id).name:'—');
@@ -372,7 +373,7 @@ async function loadCore(){
   S.settings=se.data||{monthly_total:990}; S.people=pe.data||[];
 }
 async function loadAll(){
-  const [ac,mv,ch,mo,pc,kd,kh,khist,cho,clt,cll,ev]=await Promise.all([
+  const [ac,mv,ch,mo,pc,kd,kh,khist,cho,clt,cll,ev,clst]=await Promise.all([
     sb.from('accounts').select('*').order('id'),
     sb.from('movements').select('*').order('id'),
     sb.from('charges').select('*').order('id'),
@@ -385,10 +386,11 @@ async function loadAll(){
     sb.from('cleaning_tasks').select('*').order('sort'),
     sb.from('cleaning_log').select('*').order('id'),
     sb.from('events').select('*').order('day'),
+    sb.from('cleaning_subtasks').select('*').order('sort'),
   ]);
   S.accounts=ac.data||[]; S.movements=mv.data||[]; S.charges=ch.data||[]; S.months=mo.data||[]; S.provCharges=pc.data||[];
   S.kd=kd.data||{total:0}; S.kHolders=kh.data||[]; S.kHist=khist.data||[]; S.contractHolders=cho.data||[];
-  S.clTasks=clt.data||[]; S.clLog=cll.data||[]; S.events=ev.data||[];
+  S.clTasks=clt.data||[]; S.clLog=cll.data||[]; S.events=ev.data||[]; S.clSubtasks=clst.data||[];
   // ensure every person has a person-account
   const missing=S.people.filter(p=>!personAccount(p.id));
   if(missing.length){
@@ -1116,31 +1118,65 @@ function autoAssignee(taskIdx,weekStr){
   const idx=(taskIdx+weekIndex(weekStr))%residents.length;
   return residents[idx].id;
 }
-function renderCleaning(){
-  if(!$('clWeek').value)$('clWeek').value=isoWeek(new Date());
-  const week=$('clWeek').value;
-  $('clWeekNote').textContent='Week '+week;
+// Build the week's task list as HTML into a container element, with subtask help + done toggles.
+function renderWeekTasks(container,week){
   const tasks=S.clTasks.filter(t=>t.active!==false);
-  const tb=$('clTable').querySelector('tbody');
-  tb.innerHTML=tasks.length?tasks.map((t,i)=>{
+  if(!tasks.length){container.innerHTML='<div class="muted">No cleaning tasks yet.</div>';return;}
+  container.innerHTML=tasks.map((t,i)=>{
     const log=S.clLog.find(l=>l.week===week&&l.task_id===t.id);
     const overrideId=log&&log.person_id?log.person_id:null;
     const assignee=overrideId||autoAssignee(i,week);
     const assigneeName=(S.people.find(p=>p.id===assignee)||{}).name||'—';
     const done=log&&log.done;
     const canTick=assignee===S.me.id||isAdmin();
-    const doneCell=done
-      ? `<span class="bold" style="color:#2a7">done ✓</span>${(log&&log.done_by)?` by ${(S.people.find(p=>p.id===log.done_by)||{}).name||''}`:''} ${canTick?`<button class="tiny" data-clundone="${t.id}">undo</button>`:''}`
-      : (canTick?`<button class="tiny" data-cldone="${t.id}">mark done</button>`:'<span class="muted">—</span>');
-    const assignCell=isAdmin()
+    const subs=S.clSubtasks.filter(s=>s.task_id===t.id);
+    const subHTML=subs.map(s=>`<label style="display:block;font-size:13px;margin:1px 0"><input type="checkbox" class="clsubtick"> ${s.text}${isAdmin()||true?` <button class="tiny" data-clsubdel="${s.id}" title="remove step">×</button>`:''}</label>`).join('')
+      +`<div style="margin-top:3px"><input type="text" class="clsubnew" data-clsubtask="${t.id}" placeholder="add a step…" style="width:200px;font-size:12px"> <button class="tiny" data-clsubadd="${t.id}">+ step</button></div>`;
+    const doneBtn=done
+      ? `<span class="bold" style="color:#2a7">done ✓</span>${(log&&log.done_by)?' by '+((S.people.find(p=>p.id===log.done_by)||{}).name||''):''} ${canTick?`<button class="tiny" data-clundone="${t.id}">undo</button>`:''}`
+      : (canTick?`<button class="tiny" data-cldone="${t.id}">mark done</button>`:'<span class="muted">not yet</span>');
+    const assignCtl=isAdmin()
       ? `<select data-classign="${t.id}"><option value="">auto: ${assigneeName}</option>${S.people.map(p=>`<option value="${p.id}" ${overrideId===p.id?'selected':''}>${p.name}</option>`).join('')}</select>`
-      : assigneeName;
-    return `<tr style="${done?'background:#e7f3e0':''}"><td class="bold">${t.name}</td><td>${assignCell}</td><td>${doneCell}</td></tr>`;
-  }).join(''):'<tr><td colspan="3" class="muted">No tasks yet. Add some below.</td></tr>';
-  tb.querySelectorAll('[data-cldone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.cldone,week,true)));
-  tb.querySelectorAll('[data-clundone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.clundone,week,false)));
-  tb.querySelectorAll('[data-classign]').forEach(s=>s.addEventListener('change',e=>clSetAssignee(+e.target.dataset.classign,week,e.target.value?+e.target.value:null)));
-  // task editor
+      : `<b>${assigneeName}</b>`;
+    return `<div style="border:1px solid #000;margin:6px 0;padding:8px;${done?'background:#e7f3e0':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="bold">${t.name}</span>
+        <span>${assignCtl}</span>
+        <span>${doneBtn}</span>
+        <button class="tiny" data-clexpand="${t.id}">help ▾</button>
+      </div>
+      <div class="clsubwrap" data-clsubwrap="${t.id}" style="display:none;margin-top:6px;border-top:1px dashed #000;padding-top:6px">${subHTML}</div>
+    </div>`;
+  }).join('');
+  // wire
+  container.querySelectorAll('[data-cldone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.cldone,week,true)));
+  container.querySelectorAll('[data-clundone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.clundone,week,false)));
+  container.querySelectorAll('[data-classign]').forEach(s=>s.addEventListener('change',e=>clSetAssignee(+e.target.dataset.classign,week,e.target.value?+e.target.value:null)));
+  container.querySelectorAll('[data-clexpand]').forEach(b=>b.addEventListener('click',e=>{
+    const w=container.querySelector(`[data-clsubwrap="${e.target.dataset.clexpand}"]`);
+    if(w)w.style.display=w.style.display==='none'?'block':'none';
+  }));
+  container.querySelectorAll('[data-clsubadd]').forEach(b=>b.addEventListener('click',async e=>{
+    const tid=+e.target.dataset.clsubadd;
+    const inp=container.querySelector(`.clsubnew[data-clsubtask="${tid}"]`);
+    const text=inp?inp.value.trim():'';
+    if(!text)return;
+    const sort=(S.clSubtasks.filter(s=>s.task_id===tid).reduce((m,s)=>Math.max(m,s.sort||0),0))+1;
+    await sb.from('cleaning_subtasks').insert({task_id:tid,text,sort});
+    await loadAll();renderWeekTasks(container,week);
+    const w=container.querySelector(`[data-clsubwrap="${tid}"]`); if(w)w.style.display='block';
+  }));
+  container.querySelectorAll('[data-clsubdel]').forEach(b=>b.addEventListener('click',async e=>{
+    await sb.from('cleaning_subtasks').delete().eq('id',+e.target.dataset.clsubdel);
+    await loadAll();renderWeekTasks(container,week);
+  }));
+}
+function renderCleaning(){
+  if(!$('clWeek').value)$('clWeek').value=isoWeek(new Date());
+  const week=$('clWeek').value;
+  $('clWeekNote').textContent='Week '+week;
+  renderWeekTasks($('clList'),week);
+  // task editor (add/remove whole tasks)
   const tt=$('clTaskTable').querySelector('tbody');
   tt.innerHTML=S.clTasks.length?S.clTasks.map(t=>`<tr><td>${isAdmin()?`<input type="text" value="${(t.name||'').replace(/"/g,'&quot;')}" data-cltname="${t.id}" style="width:200px">`:t.name}</td><td>${isAdmin()?`<button class="tiny" data-cltdel="${t.id}">×</button>`:''}</td></tr>`).join(''):'<tr><td colspan="2" class="muted">No tasks.</td></tr>';
   tt.querySelectorAll('[data-cltname]').forEach(i=>i.addEventListener('change',async e=>{await sb.from('cleaning_tasks').update({name:e.target.value}).eq('id',+e.target.dataset.cltname);await loadAll();renderCleaning();}));
@@ -1159,13 +1195,13 @@ async function clSetDone(taskId,week,done){
   if(!(assignee===S.me.id||isAdmin())){msg('Only the assigned person or admin can do that',true);return;}
   const l=await clEnsureLog(taskId,week);
   await sb.from('cleaning_log').update(done?{done:true,done_by:S.me.id,done_at:new Date().toISOString()}:{done:false,done_by:null,done_at:null}).eq('id',l.id);
-  await loadAll();renderCleaning();
+  await loadAll();render();
 }
 async function clSetAssignee(taskId,week,pid){
   if(!isAdmin()){msg('Admin only',true);return;}
   const l=await clEnsureLog(taskId,week);
   await sb.from('cleaning_log').update({person_id:pid}).eq('id',l.id);
-  await loadAll();renderCleaning();
+  await loadAll();render();
 }
 $('clThis').addEventListener('click',()=>{$('clWeek').value=isoWeek(new Date());renderCleaning();});
 $('clWeek').addEventListener('change',renderCleaning);
@@ -1206,7 +1242,7 @@ function renderCalendar(){
       if(cell.d.getDay()===1&&tasks.length){
         const wk=isoWeek(cell.d);
         const names=tasks.map((t,i)=>{const log=S.clLog.find(l=>l.week===wk&&l.task_id===t.id);const pid=(log&&log.person_id)||autoAssignee(i,wk);return ((S.people.find(p=>p.id===pid)||{}).name||'?').slice(0,3);});
-        clean=`<div class="calclean">⟳ ${names.join('/')}</div>`;
+        clean=`<div class="calclean" data-calweek="${wk}" style="cursor:pointer;text-decoration:underline">⟳ ${names.join('/')}</div>`;
       }
       html+=`<div class="calcell ${cell.dim?'dim':''}" data-calday="${key}">
         <div class="caldate">${cell.d.getDate()}</div>
@@ -1230,6 +1266,22 @@ function renderCalendar(){
     await sb.from('events').delete().eq('id',+e.target.dataset.caldel);
     await loadAll();renderCalendar();
   }));
+  $('calGrid').querySelectorAll('[data-calweek]').forEach(el=>el.addEventListener('click',e=>{
+    e.stopPropagation();
+    openWeekPanel(el.dataset.calweek);
+  }));
+  // keep an open panel showing after re-render
+  if(calOpenWeek)openWeekPanel(calOpenWeek);
+}
+let calOpenWeek=null;
+function openWeekPanel(week){
+  calOpenWeek=week;
+  const p=$('calWeekPanel');
+  p.innerHTML=`<div style="border:2px solid #000;padding:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>Cleaning — week ${week}</b><button class="tiny" id="calWeekClose">close ×</button></div>
+    <div id="calWeekList" style="margin-top:6px"></div></div>`;
+  renderWeekTasks($('calWeekList'),week);
+  $('calWeekClose').addEventListener('click',()=>{calOpenWeek=null;$('calWeekPanel').innerHTML='';});
 }
 $('calPrev').addEventListener('click',()=>{calView=new Date(calView.getFullYear(),calView.getMonth()-1,1);renderCalendar();});
 $('calNext').addEventListener('click',()=>{calView=new Date(calView.getFullYear(),calView.getMonth()+1,1);renderCalendar();});
