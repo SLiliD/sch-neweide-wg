@@ -126,7 +126,7 @@
   <!-- PEOPLE -->
   <section id="s-people" style="display:none">
     <h2>People</h2>
-    <table id="peopleTable"><thead><tr><th>Person</th><th class="n">Owed dues</th><th class="n">Held / bank owes</th><th>State</th></tr></thead><tbody></tbody></table>
+    <table id="peopleTable"><thead><tr><th>Person</th><th class="n">Owed dues</th><th class="n">Held / bank owes</th><th>State</th><th>Status</th></tr></thead><tbody></tbody></table>
     <div class="muted" style="font-size:13px">Owed dues = charged − paid in (what they owe the bank). Held / bank owes = money taken out − paid to providers. Positive (red) = they're holding bank cash to spend; green "+ owed" = they paid providers beyond what they took out, so the bank owes them.</div>
     <hr>
     <h3>Add a person</h3>
@@ -335,6 +335,7 @@ const eur=n=>(Number(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maxi
 
 let S={me:null,settings:null,people:[],accounts:[],movements:[],charges:[],months:[],provCharges:[],kd:{total:0},kHolders:[],kHist:[],contractHolders:[],clTasks:[],clLog:[],events:[],clSubtasks:[]};
 const isAdmin=()=>S.me&&S.me.is_admin;
+const activePeople=()=>S.people.filter(p=>p.resident!==false); // active = current residents; passive (resident=false) are history-only
 const acc=id=>S.accounts.find(a=>a.id===id);
 const accName=id=>id==null?'BANK':(acc(id)?acc(id).name:'—');
 const personAccount=pid=>S.accounts.find(a=>a.kind==='person'&&a.person_id===pid);
@@ -444,7 +445,8 @@ async function repairKautionLinks(){
 // ---- login ----
 function fillGate(){
   const sel=$('gPerson');
-  sel.innerHTML=S.people.length?S.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')+'<option value="new">— new person —</option>':'<option value="new">— create first person —</option>';
+  const loginPeople=activePeople();
+  sel.innerHTML=loginPeople.length?loginPeople.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')+'<option value="new">— new person —</option>':'<option value="new">— create first person —</option>';
   gHint();
 }
 function gHint(){const v=$('gPerson').value;if(v==='new'){$('gHint').textContent='You will be asked for a name.';return;}const p=S.people.find(x=>x.id===+v);$('gHint').textContent=(p&&!p.pin)?'First login — choose a PIN.':'';}
@@ -556,7 +558,9 @@ document.addEventListener('click',e=>{ if(e.target&&e.target.id==='bankFromApply
 // ---- PEOPLE ----
 function renderPeople(){
   const tb=$('peopleTable').querySelector('tbody');
-  tb.innerHTML=S.people.map(p=>{
+  // active first, then passive
+  const ordered=[...S.people].sort((a,b)=>((a.resident===false)-(b.resident===false)));
+  tb.innerHTML=ordered.map(p=>{
     const pa=personAccount(p.id);
     const charged=S.charges.filter(c=>c.person_id===p.id).reduce((s,c)=>s+Number(c.amount),0);
     const paidIn=S.movements.filter(m=>pa&&m.from_account===pa.id&&m.to_account==null).reduce((s,m)=>s+Number(m.amount),0);
@@ -564,13 +568,25 @@ function renderPeople(){
     const took=personTookOut(p.id);
     const spentProv=personSpentProv(p.id);
     const held=took-spentProv; // + = holds bank cash, − = bank owes them
+    const passive=p.resident===false;
     let state=[]; if(owed>0.005)state.push('owes dues'); if(held>0.005)state.push('holds bank cash'); else if(held<-0.005)state.push('bank owes them'); if(!state.length)state.push('clean');
-    return `<tr><td>${p.name}${p.id===S.me.id?' <b>(you)</b>':''}</td>
-      <td class="n ${owed>0.005?'red bold':''}">${eur(owed)}</td>
-      <td class="n ${held<-0.005?'bold':(held>0.005?'red bold':'')}" style="${held<-0.005?'color:#2a7':''}">${held>0?'':(held<0?'+':'')}${eur(Math.abs(held))}${held<-0.005?' owed':''}</td>
-      <td>${state.join(', ')}</td></tr>`;
+    const statusCell=passive
+      ? `<span class="muted">passive</span>${isAdmin()?` <button class="tiny" data-pactive="${p.id}" data-to="1">make active</button>`:''}`
+      : `<span style="color:#2a7">active</span>${isAdmin()&&p.id!==S.me.id?` <button class="tiny" data-pactive="${p.id}" data-to="0">make passive</button>`:''}`;
+    return `<tr style="${passive?'color:#999':''}"><td>${p.name}${p.id===S.me.id?' <b>(you)</b>':''}</td>
+      <td class="n ${owed>0.005&&!passive?'red bold':''}">${eur(owed)}</td>
+      <td class="n ${held<-0.005?'bold':(held>0.005&&!passive?'red bold':'')}" style="${held<-0.005?'color:#2a7':''}">${held>0?'':(held<0?'+':'')}${eur(Math.abs(held))}${held<-0.005?' owed':''}</td>
+      <td>${state.join(', ')}</td>
+      <td>${statusCell}</td></tr>`;
   }).join('');
-  $('pAdminNote').textContent=isAdmin()?'':'Only admin can add people.';
+  tb.querySelectorAll('[data-pactive]').forEach(b=>b.addEventListener('click',async e=>{
+    if(!isAdmin()){msg('Admin only',true);return;}
+    const id=+e.target.dataset.pactive, to=e.target.dataset.to==='1';
+    await sb.from('people').update({resident:to}).eq('id',id);
+    await loadCore();await loadAll();render();
+    msg(to?'Set active.':'Set passive — kept for history, removed from new charges, cleaning and login.');
+  }));
+  $('pAdminNote').textContent=isAdmin()?'Passive = former residents kept only for their past records.':'Only admin can add or change people.';
 }
 $('pAdd').addEventListener('click',async()=>{
   if(!isAdmin()){msg('Admin only',true);return;}
@@ -723,14 +739,14 @@ function holderCell(accId,label){
   const ids=recs.map(r=>r.person_id);
   if(isMultiHolder(accId)){
     if(isAdmin()){
-      return '<div style="display:flex;flex-direction:column;gap:2px">'+S.people.map(p=>`<label style="font-size:13px"><input type="checkbox" data-cthm="${accId}" value="${p.id}" ${ids.includes(p.id)?'checked':''}> ${p.name}</label>`).join('')+'</div>';
+      return '<div style="display:flex;flex-direction:column;gap:2px">'+activePeople().map(p=>`<label style="font-size:13px"><input type="checkbox" data-cthm="${accId}" value="${p.id}" ${ids.includes(p.id)?'checked':''}> ${p.name}</label>`).join('')+'</div>';
     }
     return ids.length?ids.map(id=>(S.people.find(p=>p.id===id)||{}).name).join(', '):'<span class="red">— nobody —</span>';
   }
   // single holder
   const hid=ids.length?ids[0]:null;
   if(isAdmin()){
-    const opts=S.people.map(p=>`<option value="${p.id}" ${hid===p.id?'selected':''}>${p.name}</option>`).join('');
+    const opts=activePeople().map(p=>`<option value="${p.id}" ${hid===p.id?'selected':''}>${p.name}</option>`).join('');
     return `<select data-cth="${accId}"><option value="">— nobody —</option>${opts}</select>`;
   }
   return hid?((S.people.find(p=>p.id===hid)||{}).name||'—'):'<span class="red">— nobody —</span>';
@@ -1136,7 +1152,7 @@ function renderWeekTasks(container,week){
       ? `<span class="bold" style="color:#2a7">done ✓</span>${(log&&log.done_by)?' by '+((S.people.find(p=>p.id===log.done_by)||{}).name||''):''} ${canTick?`<button class="tiny" data-clundone="${t.id}">undo</button>`:''}`
       : (canTick?`<button class="tiny" data-cldone="${t.id}">mark done</button>`:'<span class="muted">not yet</span>');
     const assignCtl=isAdmin()
-      ? `<select data-classign="${t.id}"><option value="">auto: ${assigneeName}</option>${S.people.map(p=>`<option value="${p.id}" ${overrideId===p.id?'selected':''}>${p.name}</option>`).join('')}</select>`
+      ? `<select data-classign="${t.id}"><option value="">auto: ${assigneeName}</option>${activePeople().map(p=>`<option value="${p.id}" ${overrideId===p.id?'selected':''}>${p.name}</option>`).join('')}</select>`
       : `<b>${assigneeName}</b>`;
     return `<div style="border:1px solid #000;margin:6px 0;padding:8px;${done?'background:#e7f3e0':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
