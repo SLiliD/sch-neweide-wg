@@ -102,6 +102,7 @@
     <button id="btnOut">Take out</button>
     <button id="btnPay">Pay provider</button>
     <button id="btnBuffer">Move to/from buffer</button>
+    <button id="btnExpense">Record expense</button>
   </div>
 
   <!-- BANK -->
@@ -322,6 +323,7 @@
   <h3 id="mvTitle">Movement</h3>
   <div id="mvPersonWrap"><label>Person</label><select id="mvPerson"></select></div>
   <div id="mvOtherWrap"><label id="mvOtherL">Provider</label><select id="mvOther"></select></div>
+  <div id="mvCatWrap"><label>Category</label><input type="text" id="mvCat" placeholder="e.g. cleaning, bank fee" list="mvCatList"><datalist id="mvCatList"></datalist></div>
   <label>Amount (€)</label><input type="number" id="mvAmt" step="0.01">
   <label>Date</label><input type="date" id="mvDate">
   <label>Month</label><input type="text" id="mvMonth" placeholder="2026-06">
@@ -344,6 +346,7 @@ const accName=id=>id==null?'BANK':(acc(id)?acc(id).name:'—');
 const personAccount=pid=>S.accounts.find(a=>a.kind==='person'&&a.person_id===pid);
 const providerAccounts=()=>S.accounts.filter(a=>a.kind==='provider'&&a.active);
 const bufferAccount=()=>S.accounts.find(a=>a.kind==='buffer');
+const expenseAccount=()=>S.accounts.find(a=>a.kind==='expense');
 function byDateDesc(arr){
   return [...arr].sort((a,b)=>{
     const da=(a.ts||'')+String(a.id).padStart(9,'0');
@@ -506,7 +509,7 @@ function render(){
 // ---- BANK ----
 // per-person: taken out (bank->person), spent on providers (person->provider)
 function personTookOut(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>m.from_account==null&&m.to_account===pa.id).reduce((s,m)=>s+Number(m.amount),0):0;}
-function personSpentProv(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>{const t=acc(m.to_account);return m.from_account===pa.id&&t&&t.kind==='provider';}).reduce((s,m)=>s+Number(m.amount),0):0;}
+function personSpentProv(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>{const t=acc(m.to_account);return m.from_account===pa.id&&t&&(t.kind==='provider'||t.kind==='expense');}).reduce((s,m)=>s+Number(m.amount),0):0;}
 function personPaidIn(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>m.from_account===pa.id&&m.to_account==null).reduce((s,m)=>s+Number(m.amount),0):0;}
 function personCharged(pid){return S.charges.filter(c=>c.person_id===pid).reduce((s,c)=>s+Number(c.amount),0);}
 function renderBank(){
@@ -633,7 +636,8 @@ function drawLedger(){
     }
     const seenBtn=(flagged&&isAdmin())?` <button class="tiny" data-noteseen="${m.id}">seen</button>`:'';
     const delBtn=isAdmin()?`<button class="tiny" data-mdel="${m.id}">×</button>`:'';
-    return `<tr><td>${m.ts||''}</td><td>${person}</td><td>${accName(m.from_account)}</td><td>${accName(m.to_account)}</td><td class="n">${eur(m.amount)}</td><td>${noteCell}${seenBtn}</td>
+    const catTag=m.category?`<span style="background:#000;color:#fff;font-size:10px;padding:0 4px;margin-right:3px;border-radius:2px">${m.category}</span>`:'';
+    return `<tr><td>${m.ts||''}</td><td>${person}</td><td>${accName(m.from_account)}</td><td>${accName(m.to_account)}</td><td class="n">${eur(m.amount)}</td><td>${catTag}${noteCell}${seenBtn}</td>
       <td>${delBtn}</td></tr>`;
   }).join(''):'<tr><td colspan="7" class="muted">No movements.</td></tr>';
   tb.querySelectorAll('[data-mdel]').forEach(b=>b.addEventListener('click',async e=>{await sb.from('movements').delete().eq('id',+e.target.dataset.mdel);await loadAll();render();}));
@@ -906,7 +910,7 @@ $('setSave').addEventListener('click',async()=>{
 let mvMode='in';
 function openMv(mode){
   mvMode=mode;
-  const t={in:'Pay in to bank',out:'Take out of bank',pay:'Pay a provider',buffer:'Move to / from buffer'}[mode];
+  const t={in:'Pay in to bank',out:'Take out of bank',pay:'Pay a provider',buffer:'Move to / from buffer',expense:'Record a shared expense'}[mode];
   $('mvTitle').textContent=t;
   // non-admins can only add movements for themselves; admin can pick anyone
   if(isAdmin()){
@@ -919,8 +923,19 @@ function openMv(mode){
   const other=$('mvOther');
   if(mode==='pay'){ $('mvOtherWrap').style.display='block'; $('mvOtherL').textContent='Provider'; other.innerHTML=providerAccounts().map(a=>`<option value="${a.id}">${a.name}</option>`).join(''); }
   else if(mode==='buffer'){ $('mvOtherWrap').style.display='block'; $('mvOtherL').textContent='Direction'; other.innerHTML='<option value="to">Add to buffer (bank → buffer)</option><option value="from">Spend from buffer (buffer → bank)</option>'; $('mvPersonWrap').style.display='none'; }
+  else if(mode==='expense'){ $('mvOtherWrap').style.display='block'; $('mvOtherL').textContent='Paid by'; other.innerHTML='<option value="person">A person (bank will owe them)</option><option value="buffer">From the buffer</option>'; }
   else { $('mvOtherWrap').style.display='none'; }
   if(mode!=='buffer')$('mvPersonWrap').style.display='block';
+  // category field only for expenses; fill datalist with past categories
+  $('mvCatWrap').style.display=mode==='expense'?'block':'none';
+  if(mode==='expense'){
+    const cats=[...new Set(S.movements.map(m=>m.category).filter(Boolean))];
+    $('mvCatList').innerHTML=cats.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
+    $('mvCat').value='';
+    // expense "paid by" toggles whether the person picker is needed
+    other.onchange=()=>{$('mvPersonWrap').style.display=other.value==='person'?'block':'none';};
+    $('mvPersonWrap').style.display='block';
+  } else { other.onchange=null; }
   $('mvAmt').value=''; $('mvNote').value=''; $('mvMonth').value=curMonthLabel(); $('mvDate').value=new Date().toISOString().slice(0,10); $('mvMsg').textContent='';
   $('mvDlg').showModal();
 }
@@ -929,6 +944,7 @@ $('btnIn').addEventListener('click',()=>openMv('in'));
 $('btnOut').addEventListener('click',()=>openMv('out'));
 $('btnPay').addEventListener('click',()=>openMv('pay'));
 $('btnBuffer').addEventListener('click',()=>openMv('buffer'));
+$('btnExpense').addEventListener('click',()=>openMv('expense'));
 $('mvX').addEventListener('click',()=>$('mvDlg').close());
 $('mvGo').addEventListener('click',async()=>{
   const amt=Number($('mvAmt').value)||0;
@@ -937,10 +953,22 @@ $('mvGo').addEventListener('click',async()=>{
   let month_id=null;
   if(label){let mo=S.months.find(m=>m.label===label);if(!mo){const {data}=await sb.from('months').insert({label}).select().single();mo=data;S.months.push(mo);}month_id=mo.id;}
   const note=$('mvNote').value||null;
-  let from=null,to=null;
+  let from=null,to=null,category=null;
   if(mvMode==='buffer'){
     const buf=bufferAccount(); const dir=$('mvOther').value;
     if(dir==='to'){from=null;to=buf.id;} else {from=buf.id;to=null;}
+  } else if(mvMode==='expense'){
+    const exp=expenseAccount();
+    if(!exp){$('mvMsg').textContent='No Expenses account — run the expenses migration.';return;}
+    category=$('mvCat').value.trim()||null;
+    const src=$('mvOther').value;
+    to=exp.id;
+    if(src==='buffer'){ const buf=bufferAccount(); from=buf?buf.id:null; }
+    else {
+      let pid=+$('mvPerson').value; if(!isAdmin())pid=S.me.id;
+      const pa=personAccount(pid); if(!pa){$('mvMsg').textContent='No account for that person.';return;}
+      from=pa.id;
+    }
   } else {
     let pid=+$('mvPerson').value;
     if(!isAdmin())pid=S.me.id;  // non-admins can only record for themselves
@@ -950,7 +978,7 @@ $('mvGo').addEventListener('click',async()=>{
     else if(mvMode==='out'){from=null;to=pa.id;}
     else if(mvMode==='pay'){from=pa.id;to=+$('mvOther').value;}
   }
-  const {error}=await sb.from('movements').insert({ts:$('mvDate').value||new Date().toISOString().slice(0,10),from_account:from,to_account:to,amount:amt,month_id,note,created_by:S.me.id});
+  const {error}=await sb.from('movements').insert({ts:$('mvDate').value||new Date().toISOString().slice(0,10),from_account:from,to_account:to,amount:amt,month_id,note,category,created_by:S.me.id});
   if(error){$('mvMsg').textContent=error.message;return;}
   $('mvDlg').close(); await loadAll(); render();
 });
