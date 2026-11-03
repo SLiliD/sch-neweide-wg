@@ -512,6 +512,12 @@ function personTookOut(pid){const pa=personAccount(pid);return pa?S.movements.fi
 function personSpentProv(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>{const t=acc(m.to_account);return m.from_account===pa.id&&t&&(t.kind==='provider'||t.kind==='expense');}).reduce((s,m)=>s+Number(m.amount),0):0;}
 function personPaidIn(pid){const pa=personAccount(pid);return pa?S.movements.filter(m=>m.from_account===pa.id&&m.to_account==null).reduce((s,m)=>s+Number(m.amount),0):0;}
 function personCharged(pid){return S.charges.filter(c=>c.person_id===pid).reduce((s,c)=>s+Number(c.amount),0);}
+// held = cash taken from bank, minus what they spent on providers/expenses, minus any pay-in overflow
+// (pay-in beyond their dues counts as returning cash). + = they hold bank cash; − = bank owes them.
+function personHeld(pid){
+  const overflow=Math.max(0,personPaidIn(pid)-personCharged(pid));
+  return personTookOut(pid)-personSpentProv(pid)-overflow;
+}
 function renderBank(){
   let paidIn=0,takenOut=0;
   for(const m of S.movements){ if(m.to_account==null)paidIn+=Number(m.amount); if(m.from_account==null)takenOut+=Number(m.amount); }
@@ -523,7 +529,7 @@ function renderBank(){
   const balance=paidIn-takenOut;
   // 3) bank owes people = sum of negative held (paid providers beyond what they took out)
   let owes=0;
-  for(const p of S.people){ const held=personTookOut(p.id)-personSpentProv(p.id); if(held<-0.005)owes+=(-held); }
+  for(const p of S.people){ const held=personHeld(p.id); if(held<-0.005)owes+=(-held); }
   $('bMissing').innerHTML=`<span class="${missing>0.005?'red':''}">${eur(missing)}</span>`;
   $('bBal').innerHTML=`<span class="${Math.abs(balance)>0.005?'red':''}">${eur(balance)}</span>`;
   $('bOwes').innerHTML=`<span class="${owes>0.005?'red':''}">${eur(owes)}</span>`;
@@ -571,10 +577,9 @@ function renderPeople(){
     const pa=personAccount(p.id);
     const charged=S.charges.filter(c=>c.person_id===p.id).reduce((s,c)=>s+Number(c.amount),0);
     const paidIn=S.movements.filter(m=>pa&&m.from_account===pa.id&&m.to_account==null).reduce((s,m)=>s+Number(m.amount),0);
+    // pay-in covers dues first; any overflow reduces what they still hold from the bank
     const owed=Math.max(0,charged-paidIn);
-    const took=personTookOut(p.id);
-    const spentProv=personSpentProv(p.id);
-    const held=took-spentProv; // + = holds bank cash, − = bank owes them
+    const held=personHeld(p.id); // + = holds bank cash, − = bank owes them (pay-in overflow already applied)
     const passive=p.resident===false;
     let state=[]; if(owed>0.005)state.push('owes dues'); if(held>0.005)state.push('holds bank cash'); else if(held<-0.005)state.push('bank owes them'); if(!state.length)state.push('clean');
     const statusCell=passive
@@ -955,7 +960,9 @@ $('mvGo').addEventListener('click',async()=>{
   const note=$('mvNote').value||null;
   let from=null,to=null,category=null;
   if(mvMode==='buffer'){
-    const buf=bufferAccount(); const dir=$('mvOther').value;
+    let buf=bufferAccount();
+    if(!buf){const {data,error}=await sb.from('accounts').insert({kind:'buffer',name:'Buffer'}).select().single();if(error){$('mvMsg').textContent='No buffer account: '+error.message;return;}buf=data;S.accounts.push(buf);}
+    const dir=$('mvOther').value;
     if(dir==='to'){from=null;to=buf.id;} else {from=buf.id;to=null;}
   } else if(mvMode==='expense'){
     const exp=expenseAccount();
@@ -978,7 +985,13 @@ $('mvGo').addEventListener('click',async()=>{
     else if(mvMode==='out'){from=null;to=pa.id;}
     else if(mvMode==='pay'){from=pa.id;to=+$('mvOther').value;}
   }
-  const {error}=await sb.from('movements').insert({ts:$('mvDate').value||new Date().toISOString().slice(0,10),from_account:from,to_account:to,amount:amt,month_id,note,category,created_by:S.me.id});
+  const row={ts:$('mvDate').value||new Date().toISOString().slice(0,10),from_account:from,to_account:to,amount:amt,month_id,note,created_by:S.me.id};
+  if(category)row.category=category;
+  let {error}=await sb.from('movements').insert(row);
+  if(error&&/category/i.test(error.message||'')){ // DB without the category column yet
+    delete row.category;
+    ({error}=await sb.from('movements').insert(row));
+  }
   if(error){$('mvMsg').textContent=error.message;return;}
   $('mvDlg').close(); await loadAll(); render();
 });
