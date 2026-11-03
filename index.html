@@ -278,8 +278,11 @@
       <div><button id="calNext">Next ›</button></div>
       <div><button id="calToday">Today</button></div>
     </div>
-    <div class="muted" style="font-size:12px">Click a day to add an event. Click the ⟳ cleaning marker on a week to open that week's task list.</div>
-    <div id="calGrid" style="margin-top:8px"></div>
+    <div class="muted" style="font-size:12px">Click a day to add an event. Green entries are logged cleaning. Click the ⟳ marker to open a week's task list.</div>
+    <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px;flex-wrap:wrap">
+      <div id="calGrid" style="flex:1;min-width:280px"></div>
+      <div id="calSidebar" style="width:200px;border:2px solid #000;padding:8px"></div>
+    </div>
     <div id="calWeekPanel" style="margin-top:10px"></div>
   </section>
 
@@ -534,6 +537,7 @@ function renderBank(){
     if(mo.label>nowM)continue;
     for(const a of providerAccounts()){
       const pc=S.provCharges.find(x=>x.account_id===a.id&&x.month_id===mo.id);
+      if(pc&&pc.unknown)continue; // unknown amount: can't count it yet
       const charge=pc?Number(pc.amount):0;
       if(charge<=0.005)continue;
       const paid=S.movements.filter(m=>m.to_account===a.id&&movementMonth(m)===mo.label).reduce((s,m)=>s+Number(m.amount),0);
@@ -687,44 +691,48 @@ function renderProviders(){
     const charge=pc?Number(pc.amount):(lastProvAmount(a.id,label)??PROV_DEFAULTS[a.name]??0);
     // sum every movement INTO this provider tagged to this month (bank, a person, or "Mark paid")
     const paid=mo?S.movements.filter(m=>m.to_account===a.id&&movementMonth(m)===label).reduce((s,m)=>s+Number(m.amount),0):0;
+    const unknown=pc&&pc.unknown;
     const gap=charge-paid;
-    const covered=charge>0 && paid>=charge-0.005;
+    const covered=!unknown && charge>0 && paid>=charge-0.005;
     const overpaid=charge>0 && paid>charge+0.005;
     const noCharge=charge<=0.005;
     let statusCell;
-    if(noCharge&&paid>0.005) statusCell=`<span style="color:#a70">paid ${eur(paid)}, no charge set</span>`;
+    if(unknown) statusCell=`<span class="red bold">AMOUNT UNKNOWN — needs an amount</span>${paid>0.005?` <span style="color:#a70">(paid ${eur(paid)} so far)</span>`:''}`;
+    else if(noCharge&&paid>0.005) statusCell=`<span style="color:#a70">paid ${eur(paid)}, no charge set</span>`;
     else if(noCharge) statusCell='<span class="muted">no charge set</span>';
     else if(covered) statusCell=`<span class="bold" style="color:#2a7">COVERED ✓</span>${overpaid?` <span style="color:#a70">(overpaid ${eur(paid-charge)})</span>`:''}`;
     else if(paid>0.005) statusCell=`<span style="color:#a70">part-paid ${eur(paid)}</span>`;
     else statusCell='<span class="red bold">UNPAID</span>';
-    const markedBy=pc&&pc.paid_at?((S.people.find(p=>p.id===pc.paid_by)||{}).name||''):'';
-    return `<tr style="${covered?'background:#e7f3e0':(paid>0.005?'background:#fff6e0':'background:#fbeeee')}">
+    const rowBg=unknown?'background:#fbeeee':(covered?'background:#e7f3e0':(paid>0.005?'background:#fff6e0':'background:#fbeeee'));
+    return `<tr style="${rowBg}">
       <td class="bold">${a.name}</td>
-      <td class="n"><input type="number" step="0.01" value="${charge}" data-pcamt="${a.id}" style="width:90px"></td>
+      <td class="n"><input type="number" step="0.01" value="${unknown?'':charge}" data-pcamt="${a.id}" style="width:80px" ${unknown?'disabled placeholder="?"':''}> <label style="font-size:11px;white-space:nowrap"><input type="checkbox" data-pcunknown="${a.id}" ${unknown?'checked':''}> unknown</label></td>
       <td>${statusCell}</td>
-      <td class="n ${gap>0.005?'red bold':''}">${noCharge?'—':eur(gap)}</td>
+      <td class="n ${gap>0.005&&!unknown?'red bold':''}">${unknown?'<span class="red">?</span>':(noCharge?'—':eur(gap))}</td>
       <td>${holderCell(a.id,label)}</td>
     </tr>`;
   }).join('')||'<tr><td colspan="5" class="muted">No providers.</td></tr>';
   tb.querySelectorAll('[data-pcamt]').forEach(i=>i.addEventListener('change',e=>setProvCharge(+e.target.dataset.pcamt,label,Number(e.target.value))));
+  tb.querySelectorAll('[data-pcunknown]').forEach(c=>c.addEventListener('change',e=>setProvUnknown(+e.target.dataset.pcunknown,label,e.target.checked)));
   tb.querySelectorAll('[data-cth]').forEach(s=>s.addEventListener('change',e=>setSingleHolder(+e.target.dataset.cth,label,e.target.value?+e.target.value:null)));
   tb.querySelectorAll('[data-cthm]').forEach(c=>c.addEventListener('change',e=>toggleHolder(+e.target.dataset.cthm,label,+e.target.value,e.target.checked)));
   // coverage note
   const provs=providerAccounts();
   const mo2=S.months.find(m=>m.label===label);
-  let cov=0,heldN=0;
+  let cov=0,heldN=0,unknownN=0;
   for(const a of provs){
     const paidA=mo2?S.movements.filter(m=>m.to_account===a.id&&movementMonth(m)===label).reduce((s,m)=>s+Number(m.amount),0):0;
     const pcA=mo2?S.provCharges.find(x=>x.account_id===a.id&&x.month_id===mo2.id):null;
+    if(pcA&&pcA.unknown){unknownN++;continue;}
     const chargeA=pcA?Number(pcA.amount):(lastProvAmount(a.id,label)??PROV_DEFAULTS[a.name]??0);
     if(chargeA>0&&paidA>=chargeA-0.005)cov++;
     if(holdersFor(a.id,label).length)heldN++;
   }
-  $('provCoverNote').innerHTML=provs.length?`${cov} of ${provs.length} covered · ${heldN} of ${provs.length} have a contract holder for ${label}.`:'';
+  $('provCoverNote').innerHTML=provs.length?`${cov} of ${provs.length} covered · ${heldN} of ${provs.length} have a contract holder for ${label}.`+(unknownN?` <span class="red">· ${unknownN} with unknown amount — set it!</span>`:''):'';
   // history
   const rows=[...S.contractHolders].map(r=>({r,mo:S.months.find(m=>m.id===r.month_id)})).filter(x=>x.mo&&x.r.person_id)
     .sort((a,b)=>a.mo.label<b.mo.label?1:(a.mo.label>b.mo.label?-1:0));
-  $('ctHistTable').querySelector('tbody').innerHTML=rows.length?rows.map(x=>`<tr><td>${x.mo.label}</td><td>${accName(x.r.account_id)}</td><td>${(S.people.find(p=>p.id===x.r.person_id)||{}).name||'—'}</td></tr>`).join(''):'<tr><td colspan="3" class="muted">No history yet.</td></tr>';
+  $('ctHistTable').querySelector('tbody').innerHTML=rows.length?rows.map(x=>`<tr><td>${x.mo.label}</td><td>${accName(x.r.account_id)}</td><td>${pLabel(S.people.find(p=>p.id===x.r.person_id)||{name:'—'})}</td></tr>`).join(''):'<tr><td colspan="3" class="muted">No history yet.</td></tr>';
 }
 function isMultiHolder(accId){
   const a=acc(accId); return !!(a&&/hausverwaltung/i.test(a.name));
@@ -734,22 +742,30 @@ function holdersFor(accId,label){
   if(!mo)return [];
   return S.contractHolders.filter(x=>x.account_id===accId&&x.month_id===mo.id&&x.person_id);
 }
+// people available as contract holders: active first, then passive (labeled). Passive stay
+// selectable because a former resident may still hold a contract for past/overlapping months.
+function holderCandidates(includeIds){
+  const inc=new Set(includeIds||[]);
+  const list=[...S.people].filter(p=>p.resident!==false||inc.has(p.id)||true); // all people
+  return list.sort((a,b)=>((a.resident===false)-(b.resident===false)));
+}
+function pLabel(p){return p.name+(p.resident===false?' (passive)':'');}
 function holderCell(accId,label){
   const recs=holdersFor(accId,label);
   const ids=recs.map(r=>r.person_id);
   if(isMultiHolder(accId)){
     if(isAdmin()){
-      return '<div style="display:flex;flex-direction:column;gap:2px">'+activePeople().map(p=>`<label style="font-size:13px"><input type="checkbox" data-cthm="${accId}" value="${p.id}" ${ids.includes(p.id)?'checked':''}> ${p.name}</label>`).join('')+'</div>';
+      return '<div style="display:flex;flex-direction:column;gap:2px">'+holderCandidates(ids).map(p=>`<label style="font-size:13px${p.resident===false?';color:#999':''}"><input type="checkbox" data-cthm="${accId}" value="${p.id}" ${ids.includes(p.id)?'checked':''}> ${pLabel(p)}</label>`).join('')+'</div>';
     }
-    return ids.length?ids.map(id=>(S.people.find(p=>p.id===id)||{}).name).join(', '):'<span class="red">— nobody —</span>';
+    return ids.length?ids.map(id=>{const p=S.people.find(x=>x.id===id)||{};return pLabel(p);}).join(', '):'<span class="red">— nobody —</span>';
   }
   // single holder
   const hid=ids.length?ids[0]:null;
   if(isAdmin()){
-    const opts=activePeople().map(p=>`<option value="${p.id}" ${hid===p.id?'selected':''}>${p.name}</option>`).join('');
+    const opts=holderCandidates(hid?[hid]:[]).map(p=>`<option value="${p.id}" ${hid===p.id?'selected':''}>${pLabel(p)}</option>`).join('');
     return `<select data-cth="${accId}"><option value="">— nobody —</option>${opts}</select>`;
   }
-  return hid?((S.people.find(p=>p.id===hid)||{}).name||'—'):'<span class="red">— nobody —</span>';
+  return hid?pLabel(S.people.find(p=>p.id===hid)||{}):'<span class="red">— nobody —</span>';
 }
 async function ensureMonth(label){
   let mo=S.months.find(m=>m.label===label);
@@ -760,8 +776,18 @@ async function setProvCharge(accId,label,amount){
   if(!/^\d{4}-\d{2}$/.test(label)){msg('Month as YYYY-MM',true);return;}
   const mo=await ensureMonth(label);
   const pc=S.provCharges.find(x=>x.account_id===accId&&x.month_id===mo.id);
-  if(pc){await sb.from('provider_charges').update({amount}).eq('id',pc.id);}
+  // setting a real amount clears the unknown flag
+  if(pc){await sb.from('provider_charges').update({amount,unknown:false}).eq('id',pc.id);}
   else{await sb.from('provider_charges').insert({account_id:accId,month_id:mo.id,amount});}
+  await loadAll();renderProviders();
+}
+async function setProvUnknown(accId,label,on){
+  if(!isAdmin()){msg('Admin only',true);return;}
+  if(!/^\d{4}-\d{2}$/.test(label)){msg('Month as YYYY-MM',true);return;}
+  const mo=await ensureMonth(label);
+  const pc=S.provCharges.find(x=>x.account_id===accId&&x.month_id===mo.id);
+  if(pc){await sb.from('provider_charges').update({unknown:on}).eq('id',pc.id);}
+  else{await sb.from('provider_charges').insert({account_id:accId,month_id:mo.id,amount:0,unknown:on});}
   await loadAll();renderProviders();
 }
 async function payProvider(accId,label){
@@ -1149,7 +1175,7 @@ function renderWeekTasks(container,week){
     const subHTML=subs.map(s=>`<label style="display:block;font-size:13px;margin:1px 0"><input type="checkbox" class="clsubtick"> ${s.text}${isAdmin()||true?` <button class="tiny" data-clsubdel="${s.id}" title="remove step">×</button>`:''}</label>`).join('')
       +`<div style="margin-top:3px"><input type="text" class="clsubnew" data-clsubtask="${t.id}" placeholder="add a step…" style="width:200px;font-size:12px"> <button class="tiny" data-clsubadd="${t.id}">+ step</button></div>`;
     const doneBtn=done
-      ? `<span class="bold" style="color:#2a7">done ✓</span>${(log&&log.done_by)?' by '+((S.people.find(p=>p.id===log.done_by)||{}).name||''):''} ${canTick?`<button class="tiny" data-clundone="${t.id}">undo</button>`:''}`
+      ? `<span class="bold" style="color:#2a7">done ✓</span>${(log&&log.done_by)?' by '+((S.people.find(p=>p.id===log.done_by)||{}).name||''):''} on ${canTick?`<input type="date" value="${log&&log.done_day?log.done_day:''}" data-cldoneday="${t.id}" style="font-size:12px">`:(log&&log.done_day?log.done_day:'—')} ${canTick?`<button class="tiny" data-clundone="${t.id}">undo</button>`:''}`
       : (canTick?`<button class="tiny" data-cldone="${t.id}">mark done</button>`:'<span class="muted">not yet</span>');
     const assignCtl=isAdmin()
       ? `<select data-classign="${t.id}"><option value="">auto: ${assigneeName}</option>${activePeople().map(p=>`<option value="${p.id}" ${overrideId===p.id?'selected':''}>${p.name}</option>`).join('')}</select>`
@@ -1167,6 +1193,7 @@ function renderWeekTasks(container,week){
   // wire
   container.querySelectorAll('[data-cldone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.cldone,week,true)));
   container.querySelectorAll('[data-clundone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.clundone,week,false)));
+  container.querySelectorAll('[data-cldoneday]').forEach(i=>i.addEventListener('change',e=>clSetDoneDay(+e.target.dataset.cldoneday,week,e.target.value)));
   container.querySelectorAll('[data-classign]').forEach(s=>s.addEventListener('change',e=>clSetAssignee(+e.target.dataset.classign,week,e.target.value?+e.target.value:null)));
   container.querySelectorAll('[data-clexpand]').forEach(b=>b.addEventListener('click',e=>{
     const w=container.querySelector(`[data-clsubwrap="${e.target.dataset.clexpand}"]`);
@@ -1210,7 +1237,13 @@ async function clSetDone(taskId,week,done){
   const assignee=(log&&log.person_id)||autoAssignee(i,week);
   if(!(assignee===S.me.id||isAdmin())){msg('Only the assigned person or admin can do that',true);return;}
   const l=await clEnsureLog(taskId,week);
-  await sb.from('cleaning_log').update(done?{done:true,done_by:S.me.id,done_at:new Date().toISOString()}:{done:false,done_by:null,done_at:null}).eq('id',l.id);
+  const today=new Date().toISOString().slice(0,10);
+  await sb.from('cleaning_log').update(done?{done:true,done_by:S.me.id,done_at:new Date().toISOString(),done_day:today}:{done:false,done_by:null,done_at:null,done_day:null}).eq('id',l.id);
+  await loadAll();render();
+}
+async function clSetDoneDay(taskId,week,day){
+  const l=await clEnsureLog(taskId,week);
+  await sb.from('cleaning_log').update({done_day:day||null}).eq('id',l.id);
   await loadAll();render();
 }
 async function clSetAssignee(taskId,week,pid){
@@ -1253,6 +1286,12 @@ function renderCalendar(){
       const cell=cells[r*7+c];
       const key=ymd(cell.d);
       const evs=S.events.filter(e=>e.day===key);
+      // cleaning tasks logged done on this exact day
+      const doneToday=S.clLog.filter(l=>l.done&&l.done_day===key).map(l=>{
+        const task=S.clTasks.find(t=>t.id===l.task_id);
+        const who=(S.people.find(p=>p.id===l.done_by)||{}).name||'';
+        return `<div class="calclean" style="background:#e7f3e0;border-radius:2px;padding:0 2px">✓ ${task?task.name:'task'}${who?' – '+who.slice(0,4):''}</div>`;
+      }).join('');
       // cleaning marker only on Mondays (week start)
       let clean='';
       if(cell.d.getDay()===1&&tasks.length){
@@ -1263,12 +1302,29 @@ function renderCalendar(){
       html+=`<div class="calcell ${cell.dim?'dim':''}" data-calday="${key}">
         <div class="caldate">${cell.d.getDate()}</div>
         ${evs.map(e=>`<div class="calev"><span>${e.title}</span><button data-caldel="${e.id}">×</button></div>`).join('')}
+        ${doneToday}
         ${clean}
       </div>`;
     }
     html+='</div>';
   }
   $('calGrid').innerHTML=html;
+  // sidebar: THIS week's task -> person
+  const thisWeek=isoWeek(new Date());
+  const sb2=$('calSidebar');
+  if(sb2){
+    if(!tasks.length){sb2.innerHTML='<b>This week</b><div class="muted" style="font-size:12px">No cleaning tasks.</div>';}
+    else{
+      sb2.innerHTML='<b>This week\'s cleaning</b><div class="muted" style="font-size:11px;margin-bottom:4px">'+thisWeek+'</div>'+tasks.map((t,i)=>{
+        const log=S.clLog.find(l=>l.week===thisWeek&&l.task_id===t.id);
+        const pid=(log&&log.person_id)||autoAssignee(i,thisWeek);
+        const name=(S.people.find(p=>p.id===pid)||{}).name||'—';
+        const done=log&&log.done;
+        return `<div style="font-size:13px;padding:2px 0;border-bottom:1px solid #ddd">${done?'✓ ':''}<b>${t.name}</b><br><span class="${done?'':'red'}" style="font-size:12px">${name}${done?' (done)':''}</span></div>`;
+      }).join('')+'<div style="margin-top:6px"><button class="tiny" id="calOpenThis">open this week ▾</button></div>';
+      const ot=$('calOpenThis'); if(ot)ot.addEventListener('click',()=>openWeekPanel(thisWeek));
+    }
+  }
   $('calGrid').querySelectorAll('[data-calday]').forEach(cell=>cell.addEventListener('click',async e=>{
     if(e.target.closest('[data-caldel]'))return; // handled below
     const day=cell.dataset.calday;
