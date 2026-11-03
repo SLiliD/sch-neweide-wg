@@ -44,6 +44,15 @@
   #calcWrap{max-width:300px;border:2px solid #000;padding:10px}
   #calcDisp{width:100%;text-align:right;font-size:28px;font-family:"Times New Roman",serif;border:1px solid #000;padding:8px;margin-bottom:8px;background:#fff}
   .calcgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .calrow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+  .calhead{font-size:11px;text-align:center;padding:2px;background:#000;color:#fff}
+  .calcell{border:1px solid #000;min-height:64px;padding:2px;font-size:12px;cursor:pointer;vertical-align:top}
+  .calcell:hover{background:#f4f4f4}
+  .calcell.dim{background:#f8f8f8;color:#aaa}
+  .caldate{font-weight:bold;font-size:12px}
+  .calev{background:#b00000;color:#fff;font-size:11px;padding:1px 3px;margin-top:1px;border-radius:2px;display:flex;justify-content:space-between;gap:3px;align-items:center}
+  .calev button{background:none;border:none;color:#fff;cursor:pointer;font-size:11px;padding:0 2px}
+  .calclean{font-size:10px;color:#2a7;margin-top:1px}
   .ck{font-size:18px;padding:14px 0;border:1px solid #000;background:#fff;cursor:pointer;font-family:"Times New Roman",serif}
   .ck:hover{background:#eee}
   .ck.op{background:#000;color:#fff} .ck.op:hover{background:#333}
@@ -82,6 +91,8 @@
     <a data-t="charges">Charges</a>
     <a data-t="kaution">Kaution</a>
     <a data-t="statement">Statement</a>
+    <a data-t="cleaning">Cleaning</a>
+    <a data-t="calendar">Calendar</a>
     <a data-t="calc">Calc</a>
   </nav>
   <div class="msg" id="msg"></div>
@@ -239,6 +250,38 @@
     <table id="stTable"><thead><tr><th>Date</th><th>Tagged month</th><th>Person</th><th>From</th><th>To</th><th class="n">Amount</th><th>Note</th></tr></thead><tbody></tbody></table>
   </section>
 
+  <!-- CLEANING -->
+  <section id="s-cleaning" style="display:none">
+    <h2>Cleaning plan</h2>
+    <div class="row">
+      <div><label>Week</label><input type="week" id="clWeek" style="width:170px"></div>
+      <div><label>&nbsp;</label><button id="clThis">This week</button></div>
+    </div>
+    <div class="muted" id="clWeekNote" style="font-size:12px"></div>
+    <table id="clTable"><thead><tr><th>Task</th><th>Assigned to</th><th>Done?</th></tr></thead><tbody></tbody></table>
+    <hr>
+    <h3>Tasks</h3>
+    <table id="clTaskTable"><thead><tr><th>Task</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="row">
+      <div><label>Add a task</label><input type="text" id="clNewTask" style="width:180px"></div>
+      <div><label>&nbsp;</label><button id="clAddTask">Add</button></div>
+    </div>
+    <div class="muted" style="font-size:12px">Tasks auto-rotate between residents each week. Admin can override who's assigned. Only the assigned person (or admin) can tick a task done.</div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section id="s-calendar" style="display:none">
+    <h2>Calendar</h2>
+    <div class="row" style="align-items:center">
+      <div><button id="calPrev">‹ Prev</button></div>
+      <div style="align-self:center"><b id="calLabel" style="font-size:18px"></b></div>
+      <div><button id="calNext">Next ›</button></div>
+      <div><button id="calToday">Today</button></div>
+    </div>
+    <div class="muted" style="font-size:12px">Click a day to add an event. The ⟳ marker shows who's on cleaning that week.</div>
+    <div id="calGrid" style="margin-top:8px"></div>
+  </section>
+
   <!-- CALC -->
   <section id="s-calc" style="display:none">
     <h2>Calculator</h2>
@@ -289,7 +332,7 @@ const sb=createClient('https://zaczerqwmnvojvojskds.supabase.co','sb_publishable
 const $=id=>document.getElementById(id);
 const eur=n=>(Number(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 
-let S={me:null,settings:null,people:[],accounts:[],movements:[],charges:[],months:[],provCharges:[],kd:{total:0},kHolders:[],kHist:[],contractHolders:[]};
+let S={me:null,settings:null,people:[],accounts:[],movements:[],charges:[],months:[],provCharges:[],kd:{total:0},kHolders:[],kHist:[],contractHolders:[],clTasks:[],clLog:[],events:[]};
 const isAdmin=()=>S.me&&S.me.is_admin;
 const acc=id=>S.accounts.find(a=>a.id===id);
 const accName=id=>id==null?'BANK':(acc(id)?acc(id).name:'—');
@@ -329,7 +372,7 @@ async function loadCore(){
   S.settings=se.data||{monthly_total:990}; S.people=pe.data||[];
 }
 async function loadAll(){
-  const [ac,mv,ch,mo,pc,kd,kh,khist,cho]=await Promise.all([
+  const [ac,mv,ch,mo,pc,kd,kh,khist,cho,clt,cll,ev]=await Promise.all([
     sb.from('accounts').select('*').order('id'),
     sb.from('movements').select('*').order('id'),
     sb.from('charges').select('*').order('id'),
@@ -339,9 +382,13 @@ async function loadAll(){
     sb.from('kaution_holders').select('*').order('id'),
     sb.from('kaution_history').select('*').order('id'),
     sb.from('contract_holders').select('*').order('id'),
+    sb.from('cleaning_tasks').select('*').order('sort'),
+    sb.from('cleaning_log').select('*').order('id'),
+    sb.from('events').select('*').order('day'),
   ]);
   S.accounts=ac.data||[]; S.movements=mv.data||[]; S.charges=ch.data||[]; S.months=mo.data||[]; S.provCharges=pc.data||[];
   S.kd=kd.data||{total:0}; S.kHolders=kh.data||[]; S.kHist=khist.data||[]; S.contractHolders=cho.data||[];
+  S.clTasks=clt.data||[]; S.clLog=cll.data||[]; S.events=ev.data||[];
   // ensure every person has a person-account
   const missing=S.people.filter(p=>!personAccount(p.id));
   if(missing.length){
@@ -431,7 +478,7 @@ document.querySelectorAll('#nav a').forEach(a=>a.addEventListener('click',()=>sh
 function show(t){
   msg('');
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.t===t));
-  ['bank','people','ledgers','providers','buffer','charges','kaution','statement','calc'].forEach(x=>$('s-'+x).style.display=x===t?'block':'none');
+  ['bank','people','ledgers','providers','buffer','charges','kaution','statement','cleaning','calendar','calc'].forEach(x=>$('s-'+x).style.display=x===t?'block':'none');
   render();
 }
 function curTab(){const a=[...document.querySelectorAll('#nav a')].find(x=>x.classList.contains('on'));return a?a.dataset.t:'bank';}
@@ -445,6 +492,8 @@ function render(){
   if(t==='charges')renderCharges();
   if(t==='kaution')renderKaution();
   if(t==='statement')renderStatement();
+  if(t==='cleaning')renderCleaning();
+  if(t==='calendar')renderCalendar();
 }
 
 // ---- BANK ----
@@ -1045,6 +1094,146 @@ async function toggleHolder(accId,label,pid,on){
   }
   await loadAll();renderProviders();
 }
+
+// ---- CLEANING ----
+function isoWeek(d){
+  // ISO week string YYYY-Www
+  const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day=dt.getUTCDay()||7; dt.setUTCDate(dt.getUTCDate()+4-day);
+  const yearStart=new Date(Date.UTC(dt.getUTCFullYear(),0,1));
+  const wk=Math.ceil((((dt-yearStart)/86400000)+1)/7);
+  return dt.getUTCFullYear()+'-W'+String(wk).padStart(2,'0');
+}
+function weekIndex(weekStr){
+  // a stable integer for rotation: year*53 + week number
+  const m=/^(\d{4})-W(\d{2})$/.exec(weekStr||''); if(!m)return 0;
+  return (+m[1])*53+(+m[2]);
+}
+// auto-assigned person for a task in a week = residents rotated by week
+function autoAssignee(taskIdx,weekStr){
+  const residents=S.people.filter(p=>p.resident!==false);
+  if(!residents.length)return null;
+  const idx=(taskIdx+weekIndex(weekStr))%residents.length;
+  return residents[idx].id;
+}
+function renderCleaning(){
+  if(!$('clWeek').value)$('clWeek').value=isoWeek(new Date());
+  const week=$('clWeek').value;
+  $('clWeekNote').textContent='Week '+week;
+  const tasks=S.clTasks.filter(t=>t.active!==false);
+  const tb=$('clTable').querySelector('tbody');
+  tb.innerHTML=tasks.length?tasks.map((t,i)=>{
+    const log=S.clLog.find(l=>l.week===week&&l.task_id===t.id);
+    const overrideId=log&&log.person_id?log.person_id:null;
+    const assignee=overrideId||autoAssignee(i,week);
+    const assigneeName=(S.people.find(p=>p.id===assignee)||{}).name||'—';
+    const done=log&&log.done;
+    const canTick=assignee===S.me.id||isAdmin();
+    const doneCell=done
+      ? `<span class="bold" style="color:#2a7">done ✓</span>${(log&&log.done_by)?` by ${(S.people.find(p=>p.id===log.done_by)||{}).name||''}`:''} ${canTick?`<button class="tiny" data-clundone="${t.id}">undo</button>`:''}`
+      : (canTick?`<button class="tiny" data-cldone="${t.id}">mark done</button>`:'<span class="muted">—</span>');
+    const assignCell=isAdmin()
+      ? `<select data-classign="${t.id}"><option value="">auto: ${assigneeName}</option>${S.people.map(p=>`<option value="${p.id}" ${overrideId===p.id?'selected':''}>${p.name}</option>`).join('')}</select>`
+      : assigneeName;
+    return `<tr style="${done?'background:#e7f3e0':''}"><td class="bold">${t.name}</td><td>${assignCell}</td><td>${doneCell}</td></tr>`;
+  }).join(''):'<tr><td colspan="3" class="muted">No tasks yet. Add some below.</td></tr>';
+  tb.querySelectorAll('[data-cldone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.cldone,week,true)));
+  tb.querySelectorAll('[data-clundone]').forEach(b=>b.addEventListener('click',e=>clSetDone(+e.target.dataset.clundone,week,false)));
+  tb.querySelectorAll('[data-classign]').forEach(s=>s.addEventListener('change',e=>clSetAssignee(+e.target.dataset.classign,week,e.target.value?+e.target.value:null)));
+  // task editor
+  const tt=$('clTaskTable').querySelector('tbody');
+  tt.innerHTML=S.clTasks.length?S.clTasks.map(t=>`<tr><td>${isAdmin()?`<input type="text" value="${(t.name||'').replace(/"/g,'&quot;')}" data-cltname="${t.id}" style="width:200px">`:t.name}</td><td>${isAdmin()?`<button class="tiny" data-cltdel="${t.id}">×</button>`:''}</td></tr>`).join(''):'<tr><td colspan="2" class="muted">No tasks.</td></tr>';
+  tt.querySelectorAll('[data-cltname]').forEach(i=>i.addEventListener('change',async e=>{await sb.from('cleaning_tasks').update({name:e.target.value}).eq('id',+e.target.dataset.cltname);await loadAll();renderCleaning();}));
+  tt.querySelectorAll('[data-cltdel]').forEach(b=>b.addEventListener('click',async e=>{await sb.from('cleaning_tasks').delete().eq('id',+e.target.dataset.cltdel);await loadAll();renderCleaning();}));
+}
+async function clEnsureLog(taskId,week){
+  let log=S.clLog.find(l=>l.week===week&&l.task_id===taskId);
+  if(!log){const {data}=await sb.from('cleaning_log').insert({week,task_id:taskId}).select().single();log=data;}
+  return log;
+}
+async function clSetDone(taskId,week,done){
+  const tasks=S.clTasks.filter(t=>t.active!==false);
+  const i=tasks.findIndex(t=>t.id===taskId);
+  const log=S.clLog.find(l=>l.week===week&&l.task_id===taskId);
+  const assignee=(log&&log.person_id)||autoAssignee(i,week);
+  if(!(assignee===S.me.id||isAdmin())){msg('Only the assigned person or admin can do that',true);return;}
+  const l=await clEnsureLog(taskId,week);
+  await sb.from('cleaning_log').update(done?{done:true,done_by:S.me.id,done_at:new Date().toISOString()}:{done:false,done_by:null,done_at:null}).eq('id',l.id);
+  await loadAll();renderCleaning();
+}
+async function clSetAssignee(taskId,week,pid){
+  if(!isAdmin()){msg('Admin only',true);return;}
+  const l=await clEnsureLog(taskId,week);
+  await sb.from('cleaning_log').update({person_id:pid}).eq('id',l.id);
+  await loadAll();renderCleaning();
+}
+$('clThis').addEventListener('click',()=>{$('clWeek').value=isoWeek(new Date());renderCleaning();});
+$('clWeek').addEventListener('change',renderCleaning);
+$('clAddTask').addEventListener('click',async()=>{
+  if(!isAdmin()){msg('Admin only',true);return;}
+  const name=$('clNewTask').value.trim();if(!name){msg('Task name?',true);return;}
+  const sort=(S.clTasks.reduce((m,t)=>Math.max(m,t.sort||0),0))+1;
+  await sb.from('cleaning_tasks').insert({name,sort});
+  $('clNewTask').value='';await loadAll();renderCleaning();
+});
+
+// ---- CALENDAR ----
+let calView=new Date();
+function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function renderCalendar(){
+  const y=calView.getFullYear(), m=calView.getMonth();
+  $('calLabel').textContent=calView.toLocaleString('en',{month:'long'})+' '+y;
+  const first=new Date(y,m,1);
+  const startDay=(first.getDay()||7)-1; // Monday=0
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const cells=[];
+  // leading blanks from prev month
+  const prevDays=new Date(y,m,0).getDate();
+  for(let i=startDay-1;i>=0;i--)cells.push({d:new Date(y,m-1,prevDays-i),dim:true});
+  for(let d=1;d<=daysInMonth;d++)cells.push({d:new Date(y,m,d),dim:false});
+  while(cells.length%7!==0)cells.push({d:new Date(y,m+1,cells.length-(startDay+daysInMonth)+1),dim:true});
+  const heads=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const tasks=S.clTasks.filter(t=>t.active!==false);
+  let html='<div class="calrow">'+heads.map(h=>`<div class="calhead">${h}</div>`).join('')+'</div>';
+  for(let r=0;r<cells.length/7;r++){
+    html+='<div class="calrow">';
+    for(let c=0;c<7;c++){
+      const cell=cells[r*7+c];
+      const key=ymd(cell.d);
+      const evs=S.events.filter(e=>e.day===key);
+      // cleaning marker only on Mondays (week start)
+      let clean='';
+      if(cell.d.getDay()===1&&tasks.length){
+        const wk=isoWeek(cell.d);
+        const names=tasks.map((t,i)=>{const log=S.clLog.find(l=>l.week===wk&&l.task_id===t.id);const pid=(log&&log.person_id)||autoAssignee(i,wk);return ((S.people.find(p=>p.id===pid)||{}).name||'?').slice(0,3);});
+        clean=`<div class="calclean">⟳ ${names.join('/')}</div>`;
+      }
+      html+=`<div class="calcell ${cell.dim?'dim':''}" data-calday="${key}">
+        <div class="caldate">${cell.d.getDate()}</div>
+        ${evs.map(e=>`<div class="calev"><span>${e.title}</span><button data-caldel="${e.id}">×</button></div>`).join('')}
+        ${clean}
+      </div>`;
+    }
+    html+='</div>';
+  }
+  $('calGrid').innerHTML=html;
+  $('calGrid').querySelectorAll('[data-calday]').forEach(cell=>cell.addEventListener('click',async e=>{
+    if(e.target.closest('[data-caldel]'))return; // handled below
+    const day=cell.dataset.calday;
+    const title=prompt('Event on '+day+':');
+    if(!title)return;
+    await sb.from('events').insert({day,title:title.trim(),created_by:S.me.id});
+    await loadAll();renderCalendar();
+  }));
+  $('calGrid').querySelectorAll('[data-caldel]').forEach(b=>b.addEventListener('click',async e=>{
+    e.stopPropagation();
+    await sb.from('events').delete().eq('id',+e.target.dataset.caldel);
+    await loadAll();renderCalendar();
+  }));
+}
+$('calPrev').addEventListener('click',()=>{calView=new Date(calView.getFullYear(),calView.getMonth()-1,1);renderCalendar();});
+$('calNext').addEventListener('click',()=>{calView=new Date(calView.getFullYear(),calView.getMonth()+1,1);renderCalendar();});
+$('calToday').addEventListener('click',()=>{calView=new Date();renderCalendar();});
 
 // ---- CALCULATOR ----
 (function(){
